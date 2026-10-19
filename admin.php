@@ -104,6 +104,10 @@ input[type=password]{padding:8px 10px;border:1px solid #D3D9DE;border-radius:6px
     <p>Questions pour affiner la connaissance produit, incohérences, idées de compléments et points ouverts, d'après l'état de la base.</p>
     <a class="btn" href="analyse.php" style="text-decoration:none;display:inline-block">Ouvrir l'analyse de la base</a>
   </section>
+  <section><h2>Cartographie des sujets manquants</h2>
+    <p>Tableaux des sujets qui manquent à chaque produit, par marché et par catégorie, d'après l'état de la base.</p>
+    <a class="btn" href="cartographie.php" style="text-decoration:none;display:inline-block">Ouvrir la cartographie</a>
+  </section>
   <form method="post"><button class="btn" name="logout" value="1" style="background:#5E6A72">Se déconnecter</button></form>
 <?php endif; ?>
 </main></body></html>
