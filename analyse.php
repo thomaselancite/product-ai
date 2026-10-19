@@ -110,6 +110,8 @@ class AnalyseProgress {
 function analyse_mark_interrupted($p) {
     $lock = fopen(antoine_data_path('analyse.lock'), 'c');
     if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) return $p; // une analyse tourne vraiment
+    // Certains hébergements ne partagent pas le verrou entre requêtes : on exige aussi qu'aucune étape n'ait avancé depuis 150 s
+    if (microtime(true) - (float) ($p['updated'] ?? 0) < 150) { flock($lock, LOCK_UN); fclose($lock); return $p; }
     foreach ($p['steps'] as $i => $s) if ($s['state'] === 'running') { $p['steps'][$i]['state'] = 'error'; $p['steps'][$i]['t1'] = microtime(true); }
     $p['status'] = 'error';
     $p['error'] = "Analyse interrompue avant la fin (erreur du serveur ou délai de l'hébergeur dépassé). La consommation éventuelle de Claude est comptée dans admin.php.";
@@ -198,8 +200,9 @@ function analyse_run($c, $refresh, AnalyseProgress $P) {
         return [false, $e->getMessage()];
     } catch (Throwable $e) {
         error_log('ElanCité Product AI (analyse) : ' . $e->getMessage());
-        $P->fail($step, 'Erreur interne du serveur. Réessayez ; si le problème persiste, consultez les journaux du serveur.');
-        return [false, 'Erreur interne du serveur.'];
+        $why = get_class($e) . ' : ' . $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')'; // page réservée à l'admin : la cause exacte est utile
+        $P->fail($step, 'Erreur interne du serveur — ' . $why);
+        return [false, 'Erreur interne du serveur — ' . $why];
     }
 }
 
@@ -215,6 +218,16 @@ if ($action === 'run' && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) analyse_json(['ok' => false, 'busy' => true, 'error' => 'Une analyse est déjà en cours.'], 409);
     $token = preg_replace('/[^a-z0-9]/i', '', (string) ($_POST['token'] ?? ''));
     $P = new AnalyseProgress(!empty($_POST['refresh']), substr($token, 0, 32));
+    // Si PHP s'arrête en pleine analyse (erreur fatale, délai, mémoire), la cause est inscrite dans le panneau
+    register_shutdown_function(function () use ($P) {
+        if (($P->d['status'] ?? '') !== 'running') return;
+        $e = error_get_last(); $step = 'claude';
+        foreach ($P->d['steps'] as $st) if ($st['state'] === 'running') $step = $st['id'];
+        $why = $e ? ($e['message'] . ' (' . basename($e['file']) . ':' . $e['line'] . ')') : "arrêt sans erreur PHP";
+        $why .= sprintf(' — après %d s, mémoire max %d Mo, max_execution_time %s s', microtime(true) - $P->d['started'], memory_get_peak_usage(true) / 1048576, ini_get('max_execution_time'));
+        error_log('ElanCité Product AI (analyse) arrêt brutal : ' . $why);
+        $P->fail($step, "Le script s'est arrêté pendant l'analyse : " . $why);
+    });
     [$ok, $msg] = analyse_run($c, !empty($_POST['refresh']), $P);
     flock($lock, LOCK_UN); fclose($lock);
     analyse_json(['ok' => $ok, 'message' => $msg]);
