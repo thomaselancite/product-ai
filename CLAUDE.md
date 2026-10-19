@@ -31,3 +31,13 @@ Le code vit dans le dépôt GitHub privé `thomaselancite/product-ai`. Toute mod
 - Le déploiement est un miroir (`mirror --reverse --delete`) : un fichier retiré du dépôt est supprimé du serveur. `EC_SSH_DIR` doit donc être un dossier dédié à cet outil. Le dossier distant n'est jamais créé automatiquement. Une simulation précède toujours l'envoi et arrête le déploiement si elle supprimerait `config.php` ou `data/*.php`.
 - Après tout changement du workflow : lancer d'abord `check-ovh.yml`, puis le déploiement en simulation.
 - Avant de fusionner : la vérification de syntaxe PHP du workflow doit être au vert.
+
+## Analyse de la base (`analyse.php`)
+
+Page réservée à l'administrateur (session d'`admin.php`, jeton CSRF). Un appel à Claude sur la base entière, pages « À valider » comprises et pages « Obsolète » exclues, produit un rapport : questions pour affiner, incohérences, idées de compléments, points ouverts. Le dernier rapport est conservé dans `data/analyse.php` (non déployé, non versionné) ; la page signale quand la base a changé depuis (empreinte du texte transmis à Claude).
+
+- Consignes : section « Analyse » de la page Notion « Consignes Claude » (clé `analyse` de `antoine_ia_parse_consignes`), avec repli sur `lib/consignes/analyse.md`. Le format de réponse JSON est dans `lib/prompts.php` (`antoine_ia_analysis_format`) : toute modification doit être reportée dans `analyse.php` et dans `antoine_ia_analysis_check`.
+- Contrôle sans second appel à Claude (`antoine_ia_analysis_check`) : chaque référence « Page > Section » et chaque extrait d'incohérence est recherché dans la base, à la mise en forme près ; ce qui n'est pas retrouvé est marqué « ⚠ ». Le rapport reste une liste de pistes à vérifier : rien n'est écrit dans Notion, les corrections passent par le projet Claude.
+- La consommation est comptée sous « Admin (analyse) » et soumise au budget mensuel ; pas de limite horaire. Un verrou (`data/analyse.lock.php`) évite deux analyses simultanées.
+- À chaque modification de la page Notion « Consignes Claude », resynchroniser aussi `lib/consignes/analyse.md`.
+

@@ -237,7 +237,7 @@ function antoine_ia_parse_consignes($md) {
     $parts = preg_split('/^##\s+(.+)$/m', "\n" . $md, -1, PREG_SPLIT_DELIM_CAPTURE);
     for ($i = 1; $i + 1 < count($parts); $i += 2) {
         $title = strtolower(trim(strtr($parts[$i], ['é' => 'e', 'É' => 'e', 'è' => 'e'])));
-        $key = ['relecture' => 'relecture', 'brief' => 'brief', 'questions' => 'questions'][$title] ?? null;
+        $key = ['relecture' => 'relecture', 'brief' => 'brief', 'questions' => 'questions', 'analyse' => 'analyse'][$title] ?? null;
         // Notion échappe certains caractères (\{marché\}, \>) : on retire ces barres obliques
         if ($key) $out[$key] = trim(antoine_ia_unescape($parts[$i + 1]));
     }
