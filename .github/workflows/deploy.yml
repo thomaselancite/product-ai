@@ -1,6 +1,11 @@
 name: Déploiement
 
-# Déploie sur le serveur à chaque fusion dans main, ou à la demande (Actions > Déploiement > Run workflow).
+# Envoie le code sur l'hébergement OVH en SFTP (lftp), comme le dépôt creation-site-web.
+# - push sur main : déploiement réel
+# - lancement manuel (Actions > Déploiement > Run workflow) : simulation par défaut
+# Le dossier distant devient le miroir du dépôt (les fichiers retirés du dépôt sont supprimés),
+# sauf config.php et data/*.php, qui restent sur le serveur et ne sont jamais envoyés ni supprimés.
+
 on:
   push:
     branches: [main]
@@ -11,6 +16,9 @@ on:
         type: boolean
         default: true
 
+permissions:
+  contents: read
+
 concurrency:
   group: deploiement
   cancel-in-progress: false
@@ -18,32 +26,70 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      EC_SSH_HOST: ${{ secrets.EC_SSH_HOST }}
+      EC_SSH_PORT: ${{ secrets.EC_SSH_PORT }}
+      EC_SSH_USER: ${{ secrets.EC_SSH_USER }}
+      LFTP_PASSWORD: ${{ secrets.EC_SSH_PASS }}
+      REMOTE_DIR: ${{ secrets.EC_SSH_DIR }}
     steps:
+      - name: Vérifier la configuration
+        run: |
+          ok=true
+          for v in EC_SSH_HOST EC_SSH_USER LFTP_PASSWORD REMOTE_DIR; do
+            [ -n "${!v}" ] || { echo "::error::Secret manquant : $v"; ok=false; }
+          done
+          $ok
+          case "$EC_SSH_HOST" in *" "*|*"://"*|*"/"*) echo "::error::EC_SSH_HOST doit être un nom de serveur seul (sans sftp://, sans espace, sans /)"; exit 1;; esac
+          case "$REMOTE_DIR" in
+            "/"|"."|"./"|"~"|"~/"|"/home"|"/home/"|*".."*)
+              echo "::error::Dossier distant refusé. Indiquez le dossier de l'outil (onglet « Mes sites » OVH)."; exit 1 ;;
+          esac
+
       - uses: actions/checkout@v4
 
-      - name: Vérifier la syntaxe PHP
-        run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq php-cli sshpass rsync
-          find . -name '*.php' -not -path './.git/*' -print0 | xargs -0 -n1 php -l > /dev/null
+      - name: Installer lftp et php
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp php-cli
 
-      - name: Déployer par SSH (rsync)
-        env:
-          SSHPASS: ${{ secrets.EC_SSH_PASS }}
-          HOST: ${{ secrets.EC_SSH_HOST }}
-          USER_SSH: ${{ secrets.EC_SSH_USER }}
-          DIR: ${{ secrets.EC_SSH_DIR }}
+      - name: Vérifier la syntaxe PHP
+        run: find . -name '*.php' -not -path './.git/*' -print0 | xargs -0 -n1 php -l > /dev/null
+
+      - name: Vérifier le dossier distant
         run: |
-          case "$DIR" in ""|"/"|"."|"~"|"/home"|"/home/") echo "EC_SSH_DIR invalide : $DIR"; exit 1;; esac
-          mkdir -p ~/.ssh
-          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
-          DRY=""
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then DRY="--dry-run"; echo "SIMULATION : rien n'est modifié"; fi
-          # --delete : le dossier du serveur devient le miroir exact du dépôt (les fichiers retirés du dépôt sont supprimés).
-          # Les fichiers exclus ci-dessous sont protégés de la suppression (pas de --delete-excluded) :
-          # config.php (secrets) et data/*.php (données d'exécution) restent sur le serveur.
-          sshpass -e rsync -rlptz --delete --itemize-changes $DRY \
-            --exclude='.git/' --exclude='.github/' --exclude='.gitignore' \
-            --exclude='/config.php' --exclude='/data/*.php' \
-            --exclude='/config.example.php' --exclude='/CLAUDE.md' \
-            -e "ssh -o StrictHostKeyChecking=yes" \
-            ./ "$USER_SSH@$HOST:$DIR/"
+          PORT="${EC_SSH_PORT:-22}"
+          lftp -c "set sftp:auto-confirm yes; set net:max-retries 2; set net:timeout 30;
+            open --env-password -u \"$EC_SSH_USER\" -p $PORT sftp://$EC_SSH_HOST;
+            cd \"$REMOTE_DIR\" && cls -1a > /tmp/distant.txt; bye" \
+            || { echo "::error::Connexion refusée ou dossier distant introuvable (le dossier n'est jamais créé automatiquement)"; exit 1; }
+          n=$(grep -cvE '^\.{1,2}/?$' /tmp/distant.txt || true)
+          echo "Dossier distant trouvé : $n élément(s)"
+
+      - name: Simuler
+        run: |
+          PORT="${EC_SSH_PORT:-22}"
+          lftp -c "set sftp:auto-confirm yes; set net:max-retries 2; set net:timeout 30;
+            open --env-password -u \"$EC_SSH_USER\" -p $PORT sftp://$EC_SSH_HOST;
+            mirror --reverse --delete --verbose --dry-run \
+              --exclude '^\.git/' --exclude '^\.github/' --exclude '^\.gitignore$' \
+              --exclude '^config\.php$' --exclude '^config\.example\.php$' --exclude '^data/.*\.php$' \
+              --exclude '^CLAUDE\.md$' --exclude '^README\.md$' \
+              ./ \"$REMOTE_DIR\"; bye" | tee /tmp/simulation.txt
+          # Sécurité : si la simulation supprimait config.php ou un fichier de données, on s'arrête.
+          if grep -E '^rm ' /tmp/simulation.txt | grep -E '(^|/)config\.php$|/data/[^ ]*\.php$'; then
+            echo "::error::La simulation supprimerait config.php ou data/*.php : arrêt."; exit 1
+          fi
+          del=$(grep -cE '^rm ' /tmp/simulation.txt || true)
+          echo "Suppressions prévues : $del"
+          echo "Suppressions prévues : $del" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Déployer
+        if: github.event_name == 'push' || inputs.dry_run != true
+        run: |
+          PORT="${EC_SSH_PORT:-22}"
+          lftp -c "set sftp:auto-confirm yes; set net:max-retries 2; set net:timeout 30;
+            open --env-password -u \"$EC_SSH_USER\" -p $PORT sftp://$EC_SSH_HOST;
+            mirror --reverse --delete --verbose \
+              --exclude '^\.git/' --exclude '^\.github/' --exclude '^\.gitignore$' \
+              --exclude '^config\.php$' --exclude '^config\.example\.php$' --exclude '^data/.*\.php$' \
+              --exclude '^CLAUDE\.md$' --exclude '^README\.md$' \
+              ./ \"$REMOTE_DIR\"; bye"
