@@ -36,7 +36,9 @@ function antoine_ia_default_consignes() {
             'brief'     => (string) @file_get_contents($d . 'brief.md'),
             'questions' => (string) @file_get_contents($d . 'questions.md'),
             'analyse'   => (string) @file_get_contents($d . 'analyse.md'),
-            'cartographie' => (string) @file_get_contents($d . 'cartographie.md')];
+            'cartographie' => (string) @file_get_contents($d . 'cartographie.md'),
+            'glossaire' => (string) @file_get_contents($d . 'glossaire.md'),
+            'affirmations' => (string) @file_get_contents($d . 'affirmations.md')];
 }
 
 /** Consigne d'une tâche : section Notion si elle existe, sinon texte par défaut. */
@@ -334,4 +336,20 @@ function antoine_ia_map_check($data, $kb) {
     }
     $ignores = count(array_filter(array_keys($byName), function ($k) use ($used) { return !isset($used[$k]); }));
     return [['synthese' => (string) ($data['synthese'] ?? ''), 'categories' => $cats, 'produits' => $rows, 'ignores' => $ignores], $total, $warn];
+}
+
+/* ---------- Termes absents du glossaire de traduction (page glossaire.php, réservée à l'administrateur) ---------- */
+
+function antoine_ia_glossary_format() {
+    return <<<'TXT'
+FORMAT DE RÉPONSE
+Réponds uniquement avec un objet JSON de cette forme, sans texte avant ni après ("termes" est vide si rien ne manque) :
+{"synthese":"",
+ "termes":[{"terme":"","langue":"","section_glossaire":"","extrait":"","reference":"","pourquoi":""}]}
+TXT;
+}
+
+function antoine_ia_build_glossary($consignes = null) {
+    return ['instructions' => antoine_ia_rules($consignes, 'glossaire') . "\n\n" . antoine_ia_glossary_format(),
+            'messages' => [['role' => 'user', 'content' => "Liste les termes utilisés dans les pages produit et marque de la base de connaissance fournie qui ne figurent pas dans la page « Glossaire de traduction », au format demandé."]]];
 }
