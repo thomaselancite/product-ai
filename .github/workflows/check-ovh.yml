@@ -1,0 +1,54 @@
+name: Vérification connexion OVH
+
+# Test en lecture seule : secrets, connexion SFTP, dossier distant, présence de config.php et de data/.
+# N'envoie et ne modifie aucun fichier. À lancer à la main (Actions > Vérification connexion OVH > Run workflow).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      EC_SSH_HOST: ${{ secrets.EC_SSH_HOST }}
+      EC_SSH_PORT: ${{ secrets.EC_SSH_PORT }}
+      EC_SSH_USER: ${{ secrets.EC_SSH_USER }}
+      LFTP_PASSWORD: ${{ secrets.EC_SSH_PASS }}
+      REMOTE_DIR: ${{ secrets.EC_SSH_DIR }}
+    steps:
+      - name: 1. Secrets présents
+        run: |
+          ok=true
+          for v in EC_SSH_HOST EC_SSH_USER LFTP_PASSWORD REMOTE_DIR; do
+            if [ -n "${!v}" ]; then echo "OK       $v"; else echo "MANQUANT $v"; ok=false; fi
+          done
+          [ -n "$EC_SSH_PORT" ] && echo "OK       EC_SSH_PORT (facultatif)" || echo "absent   EC_SSH_PORT (facultatif, 22 par défaut)"
+          case "$EC_SSH_HOST" in *" "*|*"://"*|*"/"*) echo "ATTENTION EC_SSH_HOST doit être un nom de serveur seul (sans sftp://, sans espace, sans /)"; ok=false;; esac
+          case "$REMOTE_DIR" in /*) echo "ATTENTION EC_SSH_DIR commence par « / » : sur OVH le chemin est le plus souvent relatif (ex. www/outils)";; esac
+          $ok
+
+      - name: 2. Installer lftp
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+
+      - name: 3. Connexion SFTP et dossier distant (lecture seule)
+        run: |
+          PORT="${EC_SSH_PORT:-22}"
+          C="set sftp:auto-confirm yes; set net:max-retries 2; set net:timeout 30; open --env-password -u \"$EC_SSH_USER\" -p $PORT sftp://$EC_SSH_HOST;"
+          lftp -c "$C pwd; bye" 2>&1 | sed 's#sftp://[^/]*##' | head -2 | sed 's/^/Dossier de connexion : /'
+          if lftp -c "$C cd \"$REMOTE_DIR\" && cls -1a > /tmp/liste.txt; bye"; then
+            n=$(grep -cvE '^\.{1,2}/?$' /tmp/liste.txt || true)
+            has() { grep -qE "^$1/?$" /tmp/liste.txt && echo présent || echo absent; }
+            echo "OK : connexion réussie, dossier trouvé, $n élément(s)"
+            echo "  index.php : $(has index.php) | config.php : $(has config.php) | data/ : $(has data) | lib/ : $(has lib)"
+            { echo "- Connexion OK, dossier trouvé, $n élément(s)";
+              echo "- index.php : $(has index.php), config.php : $(has config.php), data/ : $(has data), lib/ : $(has lib)"; } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "ECHEC : connexion refusée ou dossier introuvable"
+            echo "- ECHEC (connexion ou dossier)" >> "$GITHUB_STEP_SUMMARY"
+            echo "Contenu de la racine de connexion (pour retrouver le bon chemin) :"
+            lftp -c "$C cls -1aF; bye" 2>&1 | head -40
+            exit 1
+          fi

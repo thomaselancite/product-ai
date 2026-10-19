@@ -24,10 +24,10 @@ Le format de réponse des trois tâches reste dans le code (`lib/prompts.php`) :
 
 ## Dépôt, déploiement et secrets
 
-Le code vit dans le dépôt GitHub privé `thomaselancite/product-ai`. Toute modification passe par une branche et une pull request ; la fusion dans `main` déploie automatiquement sur le serveur par SSH/rsync (`.github/workflows/deploy.yml`). Le workflow peut aussi être lancé à la main (« Run workflow »).
+Le code vit dans le dépôt GitHub privé `thomaselancite/product-ai`. Toute modification passe par une branche et une pull request ; la fusion dans `main` déploie automatiquement sur l'hébergement OVH en SFTP (lftp), comme le dépôt `creation-site-web` (`.github/workflows/deploy.yml`). Le workflow peut aussi être lancé à la main (« Run workflow », simulation par défaut). `check-ovh.yml` teste la connexion et le dossier distant en lecture seule.
 
-- Secrets du déploiement : secrets GitHub Actions `EC_SSH_HOST`, `EC_SSH_USER`, `EC_SSH_PASS`, `EC_SSH_DIR`. Ne jamais les écrire dans le dépôt.
-- `config.php` (clés Claude et Notion, mot de passe admin, codes des agences) et `data/*.php` (cache, compteurs) ne sont pas dans le dépôt (`.gitignore`) et ne sont jamais écrasés par le déploiement. `config.example.php` en est le modèle ; toute nouvelle clé de configuration doit y être ajoutée et signalée, car elle doit aussi être ajoutée à la main dans `config.php` sur le serveur.
-- Le déploiement est un miroir (rsync `--delete`) : un fichier retiré du dépôt est supprimé du serveur. `EC_SSH_DIR` doit donc être un dossier dédié à cet outil. `config.php` et `data/*.php` sont protégés par les exclusions du workflow. Lancer d'abord le workflow à la main en simulation (`dry_run`) après tout changement du workflow.
+- Secrets du déploiement : secrets GitHub Actions `EC_SSH_HOST`, `EC_SSH_USER`, `EC_SSH_PASS`, `EC_SSH_DIR` (dossier de l'outil tel qu'indiqué dans l'onglet « Mes sites » OVH, souvent relatif) et, si besoin, `EC_SSH_PORT` (22 par défaut). Ne jamais les écrire dans le dépôt.
+- `config.php` (clés Claude et Notion, mot de passe admin, codes des agences) et `data/*.php` (cache, compteurs) ne sont pas dans le dépôt (`.gitignore`), ne sont jamais envoyés et ne sont jamais supprimés par le déploiement. `config.example.php` en est le modèle ; toute nouvelle clé de configuration doit y être ajoutée et signalée, car elle doit aussi être ajoutée à la main dans `config.php` sur le serveur.
+- Le déploiement est un miroir (`mirror --reverse --delete`) : un fichier retiré du dépôt est supprimé du serveur. `EC_SSH_DIR` doit donc être un dossier dédié à cet outil. Le dossier distant n'est jamais créé automatiquement. Une simulation précède toujours l'envoi et arrête le déploiement si elle supprimerait `config.php` ou `data/*.php`.
+- Après tout changement du workflow : lancer d'abord `check-ovh.yml`, puis le déploiement en simulation.
 - Avant de fusionner : la vérification de syntaxe PHP du workflow doit être au vert.
-
