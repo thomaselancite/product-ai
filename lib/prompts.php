@@ -34,7 +34,8 @@ function antoine_ia_default_consignes() {
     $d = __DIR__ . '/consignes/';
     return ['relecture' => (string) @file_get_contents($d . 'relecture.md'),
             'brief'     => (string) @file_get_contents($d . 'brief.md'),
-            'questions' => (string) @file_get_contents($d . 'questions.md')];
+            'questions' => (string) @file_get_contents($d . 'questions.md'),
+            'analyse'   => (string) @file_get_contents($d . 'analyse.md')];
 }
 
 /** Consigne d'une tâche : section Notion si elle existe, sinon texte par défaut. */
@@ -123,4 +124,119 @@ FORMAT DE RÉPONSE
 Réponds uniquement avec un objet JSON, sans texte avant ni après :
 {"titre_de_travail":"","objectif":"","cible":{"profil":"","attentes":[""]},"angle":"","messages_cles":[{"message":"","source":""}],"preuves":[{"preuve":"","source":""}],"contraintes_reglementaires":[""],"elements_de_langage":[""],"a_eviter":[""],"structure_suggeree":[""],"appel_a_l_action":"","points_a_verifier":[""],"avertissements":[""]}
 TXT;
+}
+
+/* ---------- Analyse de la base (page analyse.php, réservée à l'administrateur) ---------- */
+
+function antoine_ia_analysis_format() {
+    return <<<'TXT'
+FORMAT DE RÉPONSE
+Valeurs possibles de "gravite" : forte, moyenne, faible. Valeurs possibles de "type" (points_ouverts) : a_completer, point_a_lever, page_a_valider.
+Réponds uniquement avec un objet JSON de cette forme, sans texte avant ni après :
+{"synthese":"",
+ "questions":[{"question":"","pourquoi":"","reference":""}],
+ "incoherences":[{"description":"","gravite":"","elements":[{"reference":"","extrait":""}]}],
+ "complements":[{"idee":"","pourquoi":"","reference":""}],
+ "points_ouverts":[{"type":"","element":"","reference":""}]}
+TXT;
+}
+
+/** Requête d'analyse : même base que les autres tâches (pages « À valider » comprises), consigne « analyse ». */
+function antoine_ia_build_analysis($consignes = null) {
+    return ['instructions' => antoine_ia_rules($consignes, 'analyse') . "\n\n" . antoine_ia_analysis_format(),
+            'messages' => [['role' => 'user', 'content' => "Analyse la base de connaissance fournie et produis le rapport au format demandé."]]];
+}
+
+/** Texte comparable : minuscules, apostrophes et espaces uniformisés, balises Markdown courantes retirées. */
+function antoine_ia_norm($s) {
+    $s = strtr((string) $s, ['’' => "'", '‘' => "'", '«' => '"', '»' => '"', '“' => '"', '”' => '"', "\xC2\xA0" => ' ']);
+    $s = preg_replace('/[*`_]+/u', '', $s);       // gras, italique, code : retirés sans laisser d'espace
+    $s = preg_replace('/[|#>]+/u', ' ', $s);      // tableaux, titres, citations : remplacés par une espace
+    $s = preg_replace('/\s+/u', ' ', $s);
+    $s = trim($s);
+    return function_exists('mb_strtolower') ? mb_strtolower($s, 'UTF-8') : strtolower($s);
+}
+
+/** Pages de la base telles que transmises à Claude : nom => texte (encadré, description et contenu). */
+function antoine_ia_analysis_docs($kb) {
+    $docs = [];
+    if (!empty($kb['brand'])) $docs['Marque & positionnement'] = ($kb['brand']['encadre'] ?? '') . "\n" . ($kb['brand']['contenu'] ?? '');
+    foreach ($kb['transverses'] ?? [] as $t) if (empty($t['erreur'])) $docs[$t['nom']] = ($t['encadre'] ?? '') . "\n" . ($t['contenu'] ?? '');
+    foreach ($kb['pages'] ?? [] as $p) {
+        if (($p['statut'] ?? '') === 'Obsolète') continue;
+        $docs[$p['nom']] = ($p['description'] ?? '') . "\n" . ($p['encadre'] ?? '') . "\n" . ($p['contenu'] ?? '');
+    }
+    return $docs;
+}
+
+/**
+ * Référence « Page > Section > … » : true si la page et chaque section existent dans la base,
+ * false sinon, null si la référence est vide ou « Absent de la base ». Plusieurs références séparées par « ; ».
+ */
+function antoine_ia_check_ref($ref, $normDocs) {
+    $ref = trim((string) $ref);
+    if ($ref === '' || stripos($ref, 'absent de la base') !== false) return null;
+    $result = true;
+    foreach (preg_split('/\s*;\s*/u', $ref) as $one) {
+        $parts = array_values(array_filter(array_map('trim', preg_split('/\s*>\s*/u', trim($one, " ()\t\n")))));
+        if (!$parts) continue;
+        $page = antoine_ia_norm(array_shift($parts));
+        if (!isset($normDocs[$page])) { $result = false; continue; }
+        foreach ($parts as $sec) if (strpos($normDocs[$page], antoine_ia_norm($sec)) === false) $result = false;
+    }
+    return $result;
+}
+
+/** Page citée par une référence (première référence), sous forme normalisée, ou null. */
+function antoine_ia_ref_page($ref, $normDocs) {
+    $first = preg_split('/\s*;\s*/u', trim((string) $ref))[0] ?? '';
+    $parts = preg_split('/\s*>\s*/u', trim($first, " ()\t\n"));
+    $page = antoine_ia_norm($parts[0] ?? '');
+    return isset($normDocs[$page]) ? $page : null;
+}
+
+/**
+ * Contrôle sans appel à Claude : ajoute "_ref_ok" (références) et "_extrait_ok" (extraits des incohérences) à chaque remarque.
+ * Les extraits sont comparés à la mise en forme près (Markdown, espaces, casse). Renvoie [rapport, nombre de remarques, nombre d'avertissements].
+ */
+function antoine_ia_analysis_check($data, $kb) {
+    $docs = antoine_ia_analysis_docs($kb);
+    $norm = [];
+    foreach ($docs as $name => $text) $norm[antoine_ia_norm($name)] = antoine_ia_norm($text);
+    $all = implode(' ', $norm);
+    $total = 0; $warn = 0;
+    $arr = function ($v) { return is_array($v) ? array_values(array_filter($v, 'is_array')) : []; };
+
+    $out = ['synthese' => (string) ($data['synthese'] ?? ''), 'questions' => [], 'incoherences' => [], 'complements' => [], 'points_ouverts' => []];
+    foreach ($arr($data['questions'] ?? null) as $q) {
+        $q['_ref_ok'] = antoine_ia_check_ref($q['reference'] ?? '', $norm);
+        $total++; if ($q['_ref_ok'] === false) $warn++;
+        $out['questions'][] = $q;
+    }
+    foreach ($arr($data['incoherences'] ?? null) as $i) {
+        $els = [];
+        foreach ($arr($i['elements'] ?? null) as $e) {
+            $e['_ref_ok'] = antoine_ia_check_ref($e['reference'] ?? '', $norm);
+            $page = antoine_ia_ref_page($e['reference'] ?? '', $norm);
+            $ex = antoine_ia_norm($e['extrait'] ?? '');
+            $e['_extrait_ok'] = $ex === '' ? false : (strpos($page !== null ? $norm[$page] : $all, $ex) !== false);
+            $els[] = $e;
+        }
+        $i['elements'] = $els;
+        $bad = count(array_filter($els, function ($e) { return $e['_ref_ok'] === false || $e['_extrait_ok'] === false; }));
+        $i['_verifiee'] = count($els) >= 2 && $bad === 0;
+        $total++; if (!$i['_verifiee']) $warn++;
+        $out['incoherences'][] = $i;
+    }
+    foreach ($arr($data['complements'] ?? null) as $c) {
+        $c['_ref_ok'] = antoine_ia_check_ref($c['reference'] ?? '', $norm);
+        $total++; if ($c['_ref_ok'] === false) $warn++;
+        $out['complements'][] = $c;
+    }
+    foreach ($arr($data['points_ouverts'] ?? null) as $p) {
+        $p['_ref_ok'] = antoine_ia_check_ref($p['reference'] ?? '', $norm);
+        $total++; if ($p['_ref_ok'] === false) $warn++;
+        $out['points_ouverts'][] = $p;
+    }
+    return [$out, $total, $warn];
 }
