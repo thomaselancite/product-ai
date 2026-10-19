@@ -161,7 +161,8 @@ function analyse_run($c, $refresh, AnalyseProgress $P) {
             $P->tick('claude', $detail, 18 + 70 * $frac);
             return true; // l'analyse va au bout même si la page est fermée
         };
-        [$text, $cost, $err] = antoine_ia_claude_stream($kbText['text'], $built['instructions'], $built['messages'], $c, $onText);
+        $stop = '';
+        [$text, $cost, $err] = antoine_ia_claude_stream($kbText['text'], $built['instructions'], $built['messages'], $c, $onText, $stop);
         // La consommation est comptée même en cas d'erreur
         if ($cost > 0) antoine_update('usage', [], function ($u) use ($month, $cost) {
             if (!isset($u[$month])) $u[$month] = ['total' => 0, 'agencies' => []];
@@ -172,12 +173,20 @@ function analyse_run($c, $refresh, AnalyseProgress $P) {
             return array_slice($u, 0, 12, true);
         });
         if ($err) throw $err;
+        if ($stop === 'max_tokens') {
+            antoine_write('analyse.brut', ['at' => gmdate('c'), 'stop_reason' => $stop, 'text' => $text]);
+            throw new AntoineError('antoine_too_long', 'La réponse de Claude a été coupée : la limite de longueur (max_tokens, actuellement ' . (int) $c['max_tokens'] . ' dans config.php) est atteinte, réflexion comprise. Augmentez-la puis relancez (consommation comptée). Texte reçu conservé dans data/analyse.brut.php.', 502);
+        }
         $secs = max(1, round(microtime(true) - $t0));
         $P->done('claude', number_format(mb_strlen($text), 0, ',', ' ') . " caractères reçus en $secs s ; coût estimé " . number_format($cost, 2, ',', ' ') . ' $.', 88);
 
         $step = 'reponse'; $P->start('reponse');
         $data = antoine_ia_parse_json($text);
-        if ($data === null) throw new AntoineError('antoine_invalid_json', "La réponse de Claude n'a pas pu être lue (consommation comptée). Relancez l'analyse.", 502);
+        if ($data === null) {
+            antoine_write('analyse.brut', ['at' => gmdate('c'), 'stop_reason' => $stop, 'text' => $text]);
+            $n = mb_strlen($text);
+            throw new AntoineError('antoine_invalid_json', "La réponse de Claude n'a pas pu être lue (consommation comptée) : JSON invalide. Fin de réponse annoncée : " . ($stop ?: 'inconnue') . ". Début : « " . trim(mb_substr($text, 0, 150)) . ' » — fin : « ' . trim(mb_substr($text, max(0, $n - 150))) . ' ». Texte complet conservé dans data/analyse.brut.php.', 502);
+        }
         $P->done('reponse', 'Rapport lu : ' . count($data['questions'] ?? []) . ' question(s), ' . count($data['incoherences'] ?? []) . ' incohérence(s), '
             . count($data['complements'] ?? []) . ' complément(s), ' . count($data['points_ouverts'] ?? []) . ' point(s) ouvert(s).', 90);
 
@@ -384,7 +393,7 @@ li.pending .lbl{color:#9AA5AD;font-weight:400}
     fill.style.width = Math.max(2, p.percent) + '%';
     bar.className = 'bar' + (p.status === 'error' ? ' err' : '');
     pct.textContent = Math.round(p.percent) + ' % (estimation : l\'étape « Analyse par Claude » représente l\'essentiel du temps)';
-    title.textContent = p.status === 'done' ? 'Analyse terminée' : (p.status === 'error' ? 'Analyse interrompue' : 'Analyse en cours…');
+    title.textContent = p.status === 'done' ? 'Analyse terminée' : (p.status === 'error' ? 'Analyse en échec' : 'Analyse en cours…');
     var html = '';
     p.steps.forEach(function (s) {
       var ico = s.state === 'done' ? '✓' : s.state === 'error' ? '✗' : s.state === 'running' ? '<span class="spin"></span>' : '○';
