@@ -57,8 +57,9 @@ function antoine_ia_claude_call($kbText, $instructions, $messages, $s) {
  * $onText renvoie false quand la page a été fermée : l'appel est alors interrompu.
  * Renvoie toujours [texte, coût, erreur] : le coût des jetons déjà consommés est compté même en cas d'erreur.
  * Sans cURL, l'appel se fait sans streaming et le texte arrive en une fois.
+ * $stopReason (facultatif) reçoit la raison de fin de réponse.
  */
-function antoine_ia_claude_stream($kbText, $instructions, $messages, $s, callable $onText) {
+function antoine_ia_claude_stream($kbText, $instructions, $messages, $s, callable $onText, &$stopReason = null) {
     if (!function_exists('curl_init')) {
         try { $r = antoine_ia_claude_call($kbText, $instructions, $messages, $s); }
         catch (AntoineError $e) { return ['', 0, $e]; }
@@ -112,6 +113,7 @@ function antoine_ia_claude_stream($kbText, $instructions, $messages, $s, callabl
     $err = $ok === false ? curl_error($ch) : '';
     curl_close($ch);
     $cost = antoine_ia_cost($usage, $s);
+    $stopReason = $stop; // fin de réponse annoncée par Claude (end_turn, max_tokens…) : l'appelant peut la consulter
 
     if ($aborted) return [$text, $cost, new AntoineError('antoine_cancelled', 'Réponse interrompue.', 499)];
     if ($status >= 300) return [$text, $cost, antoine_ia_claude_error($status, json_decode($raw, true))];
