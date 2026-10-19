@@ -35,7 +35,8 @@ function antoine_ia_default_consignes() {
     return ['relecture' => (string) @file_get_contents($d . 'relecture.md'),
             'brief'     => (string) @file_get_contents($d . 'brief.md'),
             'questions' => (string) @file_get_contents($d . 'questions.md'),
-            'analyse'   => (string) @file_get_contents($d . 'analyse.md')];
+            'analyse'   => (string) @file_get_contents($d . 'analyse.md'),
+            'cartographie' => (string) @file_get_contents($d . 'cartographie.md')];
 }
 
 /** Consigne d'une tâche : section Notion si elle existe, sinon texte par défaut. */
@@ -239,4 +240,98 @@ function antoine_ia_analysis_check($data, $kb) {
         $out['points_ouverts'][] = $p;
     }
     return [$out, $total, $warn];
+}
+
+/* ---------- Cartographie des sujets manquants (page cartographie.php, réservée à l'administrateur) ---------- */
+
+/** Marchés de la base (propriété « Marchés » de Notion), dans l'ordre d'affichage. */
+function antoine_ia_markets() { return ['FR', 'UK', 'DE', 'US', 'ES', 'IT', 'Distributeurs (reste du monde)']; }
+
+function antoine_ia_map_format() {
+    return <<<'TXT'
+FORMAT DE RÉPONSE
+Valeurs possibles de "importance" : forte, moyenne, faible.
+Réponds uniquement avec un objet JSON de cette forme, sans texte avant ni après. Une entrée par page produit, dans l'ordre de la base ; "manques" est vide si rien ne manque :
+{"synthese":"",
+ "categories":["",""],
+ "produits":[{"produit":"","manques":[{"sujet":"","categorie":"","importance":"","marches":["tous"],"pourquoi":"","reference":""}]}]}
+TXT;
+}
+
+function antoine_ia_build_map($consignes = null) {
+    return ['instructions' => antoine_ia_rules($consignes, 'cartographie') . "\n\n" . antoine_ia_map_format(),
+            'messages' => [['role' => 'user', 'content' => "Cartographie les sujets manquants de chaque produit de la base de connaissance fournie, au format demandé."]]];
+}
+
+/** Code de marché normalisé (« distributeurs » → « Distributeurs (reste du monde) »), ou null s'il est inconnu. */
+function antoine_ia_map_market($m) {
+    $m = trim((string) $m);
+    foreach (antoine_ia_markets() as $k) if (strcasecmp($m, $k) === 0) return $k;
+    if (stripos($m, 'distributeur') === 0) return 'Distributeurs (reste du monde)';
+    return null;
+}
+
+/**
+ * Contrôle sans appel à Claude : une ligne par page produit de la base (hors « Obsolète »), marchés validés d'après
+ * la propriété Notion, catégories rattachées à la liste, références retrouvées dans la base.
+ * Renvoie [cartographie, nombre de manques, nombre d'avertissements].
+ */
+function antoine_ia_map_check($data, $kb) {
+    $docs = antoine_ia_analysis_docs($kb);
+    $norm = [];
+    foreach ($docs as $name => $text) $norm[antoine_ia_norm($name)] = antoine_ia_norm($text);
+    $arr = function ($v) { return is_array($v) ? array_values(array_filter($v, 'is_array')) : []; };
+
+    // Liste unique de catégories (intitulés comparés à la casse et à la mise en forme près)
+    $cats = []; $catKey = [];
+    foreach ((is_array($data['categories'] ?? null) ? $data['categories'] : []) as $c) {
+        $c = trim(mb_substr(strip_tags((string) $c), 0, 60)); $k = antoine_ia_norm($c);
+        if ($c === '' || isset($catKey[$k]) || count($cats) >= 14) continue;
+        $cats[] = $c; $catKey[$k] = $c;
+    }
+
+    $byName = [];
+    foreach ($arr($data['produits'] ?? null) as $e) $byName[antoine_ia_norm($e['produit'] ?? '')] = $e;
+
+    $total = 0; $warn = 0; $rows = []; $used = [];
+    foreach ($kb['pages'] ?? [] as $p) {
+        if (($p['statut'] ?? '') === 'Obsolète') continue;
+        $k = antoine_ia_norm($p['nom']);
+        $e = $byName[$k] ?? null; $used[$k] = true;
+        $row = ['produit' => $p['nom'], 'statut' => $p['statut'] ?? '', 'famille' => $p['famille'] ?? '',
+                'marches' => array_values((array) ($p['marches'] ?? [])), 'marches_doc' => array_values((array) ($p['marches_doc'] ?? [])),
+                'analyse' => $e !== null, 'manques' => [], 'tronques' => 0];
+        if ($e === null) { $warn++; $rows[] = $row; continue; }
+        $list = $arr($e['manques'] ?? null);
+        $row['tronques'] = max(0, count($list) - 15);
+        foreach (array_slice($list, 0, 15) as $m) {
+            $w = [];
+            $cat = trim((string) ($m['categorie'] ?? ''));
+            if ($cat === '' || !isset($catKey[antoine_ia_norm($cat)])) {
+                $w[] = 'catégorie hors liste';
+                $cat = $cat === '' ? 'Autre' : $cat;
+                if (!isset($catKey[antoine_ia_norm($cat)]) && count($cats) < 20) { $cats[] = $cat; $catKey[antoine_ia_norm($cat)] = $cat; }
+            } else $cat = $catKey[antoine_ia_norm($cat)];
+            $raw = $m['marches'] ?? ['tous'];
+            $raw = is_array($raw) ? $raw : [$raw];
+            $mk = []; $all = false;
+            foreach ($raw as $x) {
+                if (strcasecmp(trim((string) $x), 'tous') === 0) { $all = true; continue; }
+                $c = antoine_ia_map_market($x);
+                if ($c === null || !in_array($c, $row['marches'], true)) { $w[] = 'marché « ' . trim((string) $x) . ' » non couvert par le produit'; continue; }
+                $mk[$c] = true;
+            }
+            $marches = ($all || !$raw || !$mk) ? $row['marches'] : array_keys($mk);
+            $imp = in_array($m['importance'] ?? '', ['forte', 'moyenne', 'faible'], true) ? $m['importance'] : 'moyenne';
+            $ref = trim((string) ($m['reference'] ?? ''));
+            $refOk = antoine_ia_check_ref($ref, $norm);
+            if ($refOk === false) $w[] = 'référence introuvable';
+            $row['manques'][] = ['sujet' => trim((string) ($m['sujet'] ?? '')), 'categorie' => $cat, 'importance' => $imp, 'marches' => $marches,
+                                 'pourquoi' => trim((string) ($m['pourquoi'] ?? '')), 'reference' => $ref, '_ref_ok' => $refOk, '_avert' => $w];
+            $total++; if ($w) $warn++;
+        }
+        $rows[] = $row;
+    }
+    $ignores = count(array_filter(array_keys($byName), function ($k) use ($used) { return !isset($used[$k]); }));
+    return [['synthese' => (string) ($data['synthese'] ?? ''), 'categories' => $cats, 'produits' => $rows, 'ignores' => $ignores], $total, $warn];
 }
