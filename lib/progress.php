@@ -244,6 +244,7 @@ function progress_js(array $t) {
     var body = new URLSearchParams();
     body.set('csrf', csrf); body.set('token', token);
     if (form.elements['refresh'].checked) body.set('refresh', '1');
+    (T.fields || []).forEach(function (n) { if (form.elements[n]) body.set(n, form.elements[n].value); });  // champs supplémentaires du formulaire (ex. page choisie)
     live.style.display = 'block';
     title.textContent = 'Démarrage…';
     watch();

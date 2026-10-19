@@ -231,13 +231,13 @@ function antoine_ia_md_convert($md, $names, &$encadre, $unescape = true) {
     return trim($md);
 }
 
-/** Découpe la page « Consignes Claude » en sections « Relecture », « Brief », « Questions », « Analyse », « Cartographie » (titres de niveau 2). */
+/** Découpe la page « Consignes Claude » en sections « Relecture », « Brief », « Questions », « Analyse », « Cartographie », « Glossaire », « Affirmations » (titres de niveau 2). */
 function antoine_ia_parse_consignes($md) {
     $out = [];
     $parts = preg_split('/^##\s+(.+)$/m', "\n" . $md, -1, PREG_SPLIT_DELIM_CAPTURE);
     for ($i = 1; $i + 1 < count($parts); $i += 2) {
         $title = strtolower(trim(strtr($parts[$i], ['é' => 'e', 'É' => 'e', 'è' => 'e'])));
-        $key = ['relecture' => 'relecture', 'brief' => 'brief', 'questions' => 'questions', 'analyse' => 'analyse', 'cartographie' => 'cartographie'][$title] ?? null;
+        $key = ['relecture' => 'relecture', 'brief' => 'brief', 'questions' => 'questions', 'analyse' => 'analyse', 'cartographie' => 'cartographie', 'glossaire' => 'glossaire', 'affirmations' => 'affirmations'][$title] ?? null;
         // Notion échappe certains caractères (\{marché\}, \>) : on retire ces barres obliques
         if ($key) $out[$key] = trim(antoine_ia_unescape($parts[$i + 1]));
     }

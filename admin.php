@@ -108,6 +108,14 @@ input[type=password]{padding:8px 10px;border:1px solid #D3D9DE;border-radius:6px
     <p>Tableaux des sujets qui manquent à chaque produit, par marché et par catégorie, d'après l'état de la base.</p>
     <a class="btn" href="cartographie.php" style="text-decoration:none;display:inline-block">Ouvrir la cartographie</a>
   </section>
+  <section><h2>Cartographie du glossaire de traduction</h2>
+    <p>Couverture du glossaire par section, terme, langue et source, et termes utilisés dans la base mais absents du glossaire.</p>
+    <a class="btn" href="glossaire.php" style="text-decoration:none;display:inline-block">Ouvrir la cartographie du glossaire</a>
+  </section>
+  <section><h2>Affirmations à confirmer</h2>
+    <p>Affirmations déduites de la base, page par page : vous confirmez, infirmez ou précisez ; l'outil garde vos verdicts et signale ceux dont l'extrait de la base a changé.</p>
+    <a class="btn" href="affirmations.php" style="text-decoration:none;display:inline-block">Ouvrir les affirmations</a>
+  </section>
   <form method="post"><button class="btn" name="logout" value="1" style="background:#5E6A72">Se déconnecter</button></form>
 <?php endif; ?>
 </main></body></html>
