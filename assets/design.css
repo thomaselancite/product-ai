@@ -1,0 +1,48 @@
+/* ElanCité Product AI — design system, inspiré de « MonBudget » : jetons et composants communs.
+   Thème clair uniquement. Les noms de variables historiques (--asphalt, --bubble, --blue…) sont conservés
+   comme alias pour ne pas toucher au code qui les utilise. */
+:root{
+  /* Surfaces, bordures, textes */
+  --bg:#F7F9FA; --surface:#FFFFFF; --line:#E4E7EC; --field-line:#D0D5DD; --hover:#F2F4F7;
+  --ink:#101828; --muted:#475467; --soft:#667085;
+  /* Accent indigo */
+  --accent:#4F46E5; --accent-hover:#4338CA; --accent-soft:#EEF2FF; --accent-ink:#3730A3;
+  /* Couleurs sémantiques */
+  --red:#B42318; --red-soft:rgba(180,35,24,.12); --red-bg:#FEF3F2;
+  --amber:#B54708; --amber-soft:rgba(247,144,9,.20); --amber-bar:#F79009;
+  --green:#067647; --green-soft:#ECFDF3;
+  --teal:#0E7490; --teal-soft:#ECFEFF;
+  --slate:#475467; --slate-soft:rgba(102,112,133,.16);
+  --draft-bg:#FFFAEB; --draft-ink:#93370D; --todo-bg:#F2F4F7;
+  --pill-bg:var(--accent-soft); --pill-ink:var(--accent-ink); --pill-hover:#E0E7FF;
+  /* Alias historiques */
+  --asphalt:var(--accent); --bubble:var(--accent); --blue:var(--accent); --blue-soft:var(--accent-soft); --focus:var(--accent);
+  /* Rayons, ombre, espacements, polices */
+  --r-ctl:8px; --r-card:12px; --r-pill:999px; --shadow:0 1px 2px rgba(16,24,40,.05);
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s8:32px;
+  --ui:"Inter","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --read:"Source Serif 4",Georgia,"Times New Roman",serif;
+  color-scheme:light;
+}
+body{font-family:var(--ui);font-size:15px;line-height:1.5;color:var(--ink);background:var(--bg);font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+/* Boutons : primaire, secondaire */
+.btn{border:1px solid transparent;border-radius:var(--r-ctl);padding:9px 16px;font-weight:600;font-size:14px;line-height:20px;cursor:pointer;background:var(--accent);color:#fff;box-shadow:var(--shadow);transition:background .15s,border-color .15s}
+.btn:hover:not(:disabled){background:var(--accent-hover)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.secondary{background:var(--surface);color:var(--ink);border-color:var(--field-line)}
+.btn.secondary:hover:not(:disabled){background:var(--hover)}
+.linkbtn{background:none;border:0;padding:0;color:var(--accent);text-decoration:underline;cursor:pointer;font-size:13px}
+
+/* Cartes et champs */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--shadow);padding:20px}
+.panel h2{margin:0 0 4px;font-size:18px;font-weight:700;letter-spacing:-.01em}
+.panel .lead{margin:0 0 16px;color:var(--muted);font-size:14px;max-width:62ch}
+textarea,select,input[type=text],input[type=password]{width:100%;border:1px solid var(--field-line);border-radius:var(--r-ctl);background:var(--surface);padding:9px 12px;font-size:14px;line-height:20px}
+textarea{min-height:120px;resize:vertical}
+textarea:focus,select:focus,input[type=text]:focus,input[type=password]:focus{border-color:var(--accent)}
+.hint{font-size:13px;color:var(--soft)}
+.error{color:var(--red);font-size:14px;margin-top:10px;max-width:70ch}
+input[type=checkbox],input[type=radio]{accent-color:var(--accent)}
