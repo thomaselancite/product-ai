@@ -13,11 +13,14 @@ return [
     // Jeton de la connexion Notion en lecture seule (https://app.notion.com/developers/connections)
     'notion_token'  => 'A-REMPLACER',
 
-    // Mot de passe de la page d'administration (admin.php) : au moins 12 caractères
+    // Comptes : au premier lancement, l'outil crée les comptes dans data/accounts.php à partir de ces deux réglages,
+    // puis ne les relit plus (les comptes se gèrent ensuite depuis l'administration).
+    // — compte « admin » : identifiant « admin », mot de passe ci-dessous (12 caractères minimum).
+    //   Il sert aussi de secours : tant qu'aucun administrateur actif n'existe, ce mot de passe ouvre le compte « admin ».
     'admin_password' => 'A-REMPLACER',
 
-    // Agences : 'Nom de l'agence' => 'code d'accès' (12 caractères minimum, un code différent par agence).
-    // Supprimer une ligne retire l'accès immédiatement.
+    // — comptes agences : 'Nom de l'agence' => 'mot de passe initial' (12 caractères minimum).
+    //   L'identifiant est le nom en minuscules, sans accents ni espaces (« Junto » => « junto »).
     'agencies' => [
         'Junto' => 'A-REMPLACER-code-agence',
     ],

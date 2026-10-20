@@ -5,23 +5,21 @@ require __DIR__ . '/lib/core.php';
 require __DIR__ . '/lib/admin_ui.php';
 require __DIR__ . '/lib/notion.php';
 
-session_start();
 header('X-Robots-Tag: noindex, nofollow');
 header('Cache-Control: no-store');
 $c = antoine_config();
-$pwd = (string) ($c['admin_password'] ?? '');
-$configured = strlen($pwd) >= 12 && strpos($pwd, 'REMPLACER') === false;
 $msg = ''; $ok = true;
 
-if (isset($_POST['logout'])) { $_SESSION = []; session_destroy(); header('Location: admin.php'); exit; }
-if (isset($_POST['password']) && $configured) {
-    usleep(500000);
-    if (hash_equals($pwd, (string) $_POST['password'])) { session_regenerate_id(true); $_SESSION['antoine_admin'] = true; $_SESSION['csrf'] = bin2hex(random_bytes(16)); }
-    else { $msg = 'Mot de passe incorrect.'; $ok = false; }
+if (isset($_POST['logout'])) { antoine_logout(); header('Location: admin.php'); exit; }
+if (isset($_POST['login'])) {
+    try { antoine_login($_POST['login'], $_POST['password'] ?? ''); header('Location: admin.php'); exit; }
+    catch (AntoineError $e) { $msg = $e->getMessage(); $ok = false; }
 }
-$logged = !empty($_SESSION['antoine_admin']);
+$user = antoine_session_user();
+$logged = $user !== null && $user['role'] === 'admin';
+$configured = antoine_has_active_admin() || antoine_admin_password_configured();
 
-if ($logged && isset($_POST['refresh']) && hash_equals($_SESSION['csrf'] ?? '', (string) ($_POST['csrf'] ?? ''))) {
+if ($logged && isset($_POST['refresh']) && antoine_csrf_ok($_POST['csrf'] ?? '')) {
     try {
         $kb = antoine_ia_load_kb(true);
         $autres = $kb['brand'] ? ['Marque & positionnement'] : [];
@@ -49,17 +47,25 @@ td.n,th.n{text-align:right}
 <?php if ($msg): ?><div class="msg<?php echo $ok ? '' : ' err'; ?>"><?php echo h($msg); ?></div><?php endif; ?>
 
 <?php if (!$configured): ?>
-  <section><h2>Configuration incomplète</h2><p>Renseignez un mot de passe d'administration d'au moins 12 caractères dans <code>config.php</code> (clé <code>admin_password</code>).</p></section>
+  <section><h2>Configuration incomplète</h2><p>Aucun compte administrateur : renseignez un mot de passe d'administration d'au moins 12 caractères dans <code>config.php</code> (clé <code>admin_password</code>).</p></section>
+<?php elseif ($user !== null && !$logged): ?>
+  <section><h2>Accès réservé</h2><p>Votre compte (<?php echo h($user['name']); ?>) n'a pas accès à l'administration.</p>
+    <form method="post"><button class="btn secondary" name="logout" value="1">Se déconnecter</button></form>
+  </section>
 <?php elseif (!$logged): ?>
   <section><h2>Connexion</h2>
-    <form method="post"><input type="password" name="password" autocomplete="current-password" aria-label="Mot de passe"> <button class="btn">Se connecter</button></form>
+    <form method="post" style="display:grid;gap:12px;max-width:360px">
+      <label style="display:grid;gap:4px">Identifiant <input type="text" name="login" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="32" required></label>
+      <label style="display:grid;gap:4px">Mot de passe <input type="password" name="password" autocomplete="current-password" required></label>
+      <button class="btn">Se connecter</button>
+    </form>
   </section>
 <?php else: $usage = antoine_read('usage', []); $cache = antoine_read('kb', null); ?>
   <section><h2>État</h2>
     <table>
       <tr><td>Clé d'API Claude</td><td><?php echo key_ok($c['anthropic_key']) ? 'renseignée' : '<strong>à renseigner dans config.php</strong>'; ?></td></tr>
       <tr><td>Jeton Notion</td><td><?php echo key_ok($c['notion_token']) ? 'renseigné' : '<strong>à renseigner dans config.php</strong>'; ?></td></tr>
-      <tr><td>Agences</td><td><?php echo count($c['agencies']); ?> (à gérer dans config.php)</td></tr>
+      <tr><td>Comptes</td><td><?php $na = 0; $nad = 0; foreach (antoine_accounts() as $ac) { if (empty($ac['active'])) continue; if ($ac['role'] === 'admin') $nad++; else $na++; } echo $nad . ' administrateur' . ($nad > 1 ? 's' : '') . ', ' . $na . ' compte' . ($na > 1 ? 's' : '') . ' agence actif' . ($na > 1 ? 's' : ''); ?></td></tr>
       <tr><td>Limites</td><td><?php echo (int) $c['hourly_limit']; ?> appels par agence et par heure ; budget de <?php echo h($c['monthly_budget']); ?> $ par mois</td></tr>
       <tr><td>Consignes de Claude</td><td><?php
         $cs = $cache['kb']['consignes'] ?? null;
@@ -75,7 +81,7 @@ td.n,th.n{text-align:right}
         else echo h(implode(' ; ', array_map(function ($t) { return $t['nom'] . (empty($t['erreur']) ? ' (' . $t['statut'] . ')' : ' : illisible (' . $t['erreur'] . ')'); }, $cache['kb']['transverses']))); ?></td></tr>
       <tr><td>Base en cache</td><td><?php echo $cache ? 'lue le ' . h(date('d/m/Y à H:i', strtotime($cache['kb']['loaded_at']))) . ' (UTC)' : 'pas encore lue'; ?></td></tr>
     </table>
-    <form method="post" style="margin-top:14px"><input type="hidden" name="csrf" value="<?php echo h($_SESSION['csrf']); ?>">
+    <form method="post" style="margin-top:14px"><input type="hidden" name="csrf" value="<?php echo h(antoine_csrf()); ?>">
       <button class="btn" name="refresh" value="1">Relire la base Notion maintenant</button>
       <span class="hint">Vide le cache et vérifie la connexion à Notion.</span></form>
   </section>

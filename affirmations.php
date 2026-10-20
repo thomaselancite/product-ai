@@ -18,13 +18,12 @@ require __DIR__ . '/lib/prompts.php';
 require __DIR__ . '/lib/affirmations.php';
 require __DIR__ . '/lib/progress.php';
 
-session_start();
 header('X-Robots-Tag: noindex, nofollow');
 header('Cache-Control: no-store');
 
 $action = (string) ($_GET['action'] ?? '');
-$logged = !empty($_SESSION['antoine_admin']);
-$csrf = (string) ($_SESSION['csrf'] ?? '');
+$logged = antoine_admin_user() !== null;
+$csrf = $logged ? antoine_csrf() : '';
 
 function h($s) { return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8'); }
 
@@ -149,7 +148,6 @@ if ($action === 'progress') progress_poll('affirmgen');
 
 // Verdicts, archivage (appel depuis la page, sans rechargement)
 if ($action === 'set' && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
-    session_write_close();
     if (!hash_equals($csrf, (string) ($_POST['csrf'] ?? ''))) progress_json(['ok' => false, 'error' => 'Requête refusée (jeton de sécurité invalide). Rechargez la page.'], 403);
     [$ok, $m] = antoine_claims_set((string) ($_POST['id'] ?? ''), (string) ($_POST['op'] ?? ''), (string) ($_POST['verdict'] ?? ''), (string) ($_POST['comment'] ?? ''));
     progress_json(['ok' => $ok, 'message' => $m], $ok ? 200 : 400);
@@ -157,7 +155,6 @@ if ($action === 'set' && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
 // Sauvegarde : tout le fichier, en JSON
 if ($action === 'export') {
-    session_write_close();
     header('Content-Type: application/json; charset=utf-8');
     header('Content-Disposition: attachment; filename="affirmations-' . gmdate('Y-m-d') . '.json"');
     echo json_encode(antoine_read('affirmations', ['items' => []]), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
@@ -170,8 +167,6 @@ if (isset($_POST['reload']) && hash_equals($csrf, (string) ($_POST['csrf'] ?? ''
     try { $kb0 = antoine_ia_load_kb(true); $msg = 'Base relue dans Notion (' . count($kb0['pages']) . ' pages produit).'; }
     catch (AntoineError $e) { $msg = $e->getMessage(); $msgOk = false; }
 }
-
-session_write_close();
 
 /* ---------- Page ---------- */
 $running = progress_running('affirmgen');

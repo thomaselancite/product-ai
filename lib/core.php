@@ -78,12 +78,4 @@ function antoine_update($name, $default, callable $fn) {
     finally { flock($lock, LOCK_UN); fclose($lock); }
 }
 
-/** Agence correspondant au code reçu dans l'en-tête X-Antoine-Code, ou null. */
-function antoine_agency() {
-    $code = (string) ($_SERVER['HTTP_X_ANTOINE_CODE'] ?? '');
-    if ($code === '') return null;
-    foreach (antoine_config()['agencies'] as $name => $c) {
-        if (is_string($c) && strlen($c) >= 12 && hash_equals($c, $code)) return (string) $name;
-    }
-    return null;
-}
+require __DIR__ . '/auth.php';
