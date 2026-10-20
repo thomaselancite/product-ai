@@ -32,6 +32,25 @@ Le code vit dans le dépôt GitHub privé `thomaselancite/product-ai`. Toute mod
 - Après tout changement du workflow : lancer d'abord `check-ovh.yml`, puis le déploiement en simulation.
 - Avant de fusionner : la vérification de syntaxe PHP du workflow doit être au vert.
 
+## Design system et feuilles de style
+
+Le style suit le design system « MonBudget » : thème clair uniquement, accent indigo, Inter, chiffres tabulaires, rayons de 8 px (contrôles) et 12 px (cartes). Les valeurs des couleurs ont été lues sur une capture du design system et validées telles quelles le 20/10/2026 ; la source fait foi si elles divergent.
+
+- `assets/design.css` : jetons (`:root`) et composants communs (`.btn`, `.btn.secondary`, `.panel`, champs, `.hint`, `.error`, `.linkbtn`). Chargé par l'outil (`lib/app.html`) et par les pages d'administration. Toute couleur, tout rayon ou toute ombre nouveau passe par un jeton, jamais par une valeur en dur. Les anciens noms (`--asphalt`, `--bubble`, `--blue`, `--blue-soft`, `--focus`) sont des alias de `--accent` : ne pas les redéfinir.
+- `assets/admin.css` : style des pages d'administration (sidebar, sections en cartes, messages, tableaux denses). Chargé après `design.css`.
+- `lib/app.html` : le CSS propre à l'outil reste en ligne (sidebar `header.top.sidebar`, vues, panneau de relecture, conversation). Le thème sombre a été supprimé : ne pas le réintroduire sans décision explicite.
+- Police à empattements (`--read`, Source Serif 4) : réservée au texte relu (`.doc`) ; les pages de la Base partagent cette classe et la gardent.
+- Cache : `design.css` et `admin.css` sont appelées avec `?v=1`. À chaque modification de ces feuilles, incrémenter le numéro dans `lib/app.html` et dans `admin_head_links()` (`lib/admin_ui.php`), sinon les navigateurs gardent l'ancienne version.
+
+Pages d'administration (`lib/admin_ui.php`) :
+- Chaque page appelle `admin_head_links()` dans le `<head>`, `admin_shell_open($cle, $titre, $nav)` à l'ouverture du corps, puis `admin_shell_close()` à la fin. Une nouvelle page d'administration doit être ajoutée à la liste `$items` de `admin_shell_open()`.
+- Les règles CSS propres à une page restent dans son `<style>`, avec des variables de `design.css`. Les icônes de la sidebar d'administration utilisent `.nav-ico` ; `.ico` est réservée au suivi d'avancement (`progress_css()`).
+
+Règles de modification :
+- `lib/app.html` a des fins de ligne CRLF (les autres fichiers sont en LF) : les conserver, sous peine de réécrire tout le fichier dans la PR.
+- Le JavaScript de `lib/app.html` construit du HTML avec des classes et identifiants précis (`.card`, `.tag`, `mark.hl`, `.src-pill`, `.st`, `#counts`, `#verdict`…) : toute modification de style doit les conserver. Les couleurs du verdict de relecture sont en dur dans le JavaScript (objet `VERDICT`) : les aligner sur `--green`, `--amber-bar` et `--red`.
+- Vérification d'un changement de style : afficher les écrans avec une API simulée (outil) ou avec `php -S` et une configuration factice (administration), sur bureau et à 390 px, avant d'ouvrir la PR.
+
 ## Analyse de la base (`analyse.php`)
 
 Page réservée à l'administrateur (session d'`admin.php`, jeton CSRF). Un appel à Claude sur la base entière, pages « À valider » comprises et pages « Obsolète » exclues, produit un rapport : questions pour affiner, incohérences, idées de compléments, points ouverts. Le dernier rapport est conservé dans `data/analyse.php` (non déployé, non versionné) ; la page signale quand la base a changé depuis (empreinte du texte transmis à Claude).
