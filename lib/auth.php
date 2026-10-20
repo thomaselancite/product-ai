@@ -185,3 +185,80 @@ function antoine_logout() {
     antoine_set_cookie('deleted', time() - 86400);
     unset($_COOKIE[ANTOINE_COOKIE]);
 }
+
+/* ---------- Gestion des comptes (page « Comptes ») ---------- */
+
+/** Mot de passe aléatoire lisible (sans caractères ambigus), 16 caractères. */
+function antoine_generate_password() {
+    $alpha = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'; $n = strlen($alpha); $p = '';
+    for ($i = 0; $i < 16; $i++) $p .= $alpha[random_int(0, $n - 1)];
+    return $p;
+}
+
+/** Ferme toutes les sessions d'un compte. */
+function antoine_sessions_revoke($login) {
+    antoine_update('sessions', [], function ($s) use ($login) {
+        foreach ($s as $k => $v) if (($v['login'] ?? '') === $login) unset($s[$k]);
+        return $s;
+    });
+}
+
+function antoine_count_active_admins($accounts) {
+    $n = 0; foreach ($accounts as $a) if (!empty($a['active']) && $a['role'] === 'admin') $n++;
+    return $n;
+}
+function antoine_account_name_check($name, $accounts, $exceptLogin = '') {
+    $name = trim(preg_replace('/\s+/', ' ', (string) $name));
+    if ($name === '' || mb_strlen($name) > 60) throw new AntoineError('antoine_input', "Le nom doit comporter de 1 à 60 caractères.", 400);
+    foreach ($accounts as $l => $a) if ($l !== $exceptLogin && mb_strtolower($a['name']) === mb_strtolower($name)) throw new AntoineError('antoine_input', "Ce nom est déjà utilisé par le compte « $l ».", 400);
+    return $name;
+}
+
+/** Crée un compte ; renvoie [login, mot de passe généré]. */
+function antoine_account_create($login, $name, $role) {
+    $login = strtolower(trim((string) $login));
+    if (!antoine_login_valid($login)) throw new AntoineError('antoine_input', "Identifiant invalide : 3 à 32 lettres ou chiffres, sans accents ni espaces.", 400);
+    if (!in_array($role, ['admin', 'agency'], true)) throw new AntoineError('antoine_input', 'Rôle inconnu.', 400);
+    $pwd = antoine_generate_password();
+    antoine_update('accounts', [], function ($acc) use ($login, $name, $role, $pwd) {
+        if (isset($acc[$login])) throw new AntoineError('antoine_input', "L'identifiant « $login » existe déjà.", 400);
+        $name = antoine_account_name_check($name, $acc);
+        $now = gmdate('c');
+        $acc[$login] = ['login' => $login, 'name' => $name, 'role' => $role, 'hash' => password_hash($pwd, PASSWORD_DEFAULT), 'active' => true, 'created' => $now, 'updated' => $now];
+        return $acc;
+    });
+    return [$login, $pwd];
+}
+
+/** Modifie nom, rôle ou état d'un compte, en gardant toujours un administrateur actif. $self = identifiant de l'appelant. */
+function antoine_account_update($login, array $changes, $self) {
+    antoine_update('accounts', [], function ($acc) use ($login, $changes, $self) {
+        if (!isset($acc[$login])) throw new AntoineError('antoine_input', 'Compte introuvable.', 404);
+        $a = $acc[$login];
+        if (isset($changes['name'])) $a['name'] = antoine_account_name_check($changes['name'], $acc, $login);
+        if (isset($changes['role'])) {
+            if (!in_array($changes['role'], ['admin', 'agency'], true)) throw new AntoineError('antoine_input', 'Rôle inconnu.', 400);
+            $a['role'] = $changes['role'];
+        }
+        if (isset($changes['active'])) $a['active'] = (bool) $changes['active'];
+        if ($login === $self && (empty($a['active']) || $a['role'] !== 'admin')) throw new AntoineError('antoine_input', 'Vous ne pouvez pas désactiver ni rétrograder votre propre compte.', 400);
+        $a['updated'] = gmdate('c');
+        $acc[$login] = $a;
+        if (antoine_count_active_admins($acc) < 1) throw new AntoineError('antoine_input', 'Il doit rester au moins un administrateur actif.', 400);
+        return $acc;
+    });
+    if (isset($changes['active']) && !$changes['active']) antoine_sessions_revoke($login);
+}
+
+/** Nouveau mot de passe généré ; ferme les sessions du compte. */
+function antoine_account_reset_password($login) {
+    $pwd = antoine_generate_password();
+    antoine_update('accounts', [], function ($acc) use ($login, $pwd) {
+        if (!isset($acc[$login])) throw new AntoineError('antoine_input', 'Compte introuvable.', 404);
+        $acc[$login]['hash'] = password_hash($pwd, PASSWORD_DEFAULT);
+        $acc[$login]['updated'] = gmdate('c');
+        return $acc;
+    });
+    antoine_sessions_revoke($login);
+    return $pwd;
+}
