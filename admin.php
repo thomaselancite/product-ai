@@ -2,6 +2,7 @@
 /* ElanCité Product AI — administration : consommation et relecture de la base Notion. */
 define('ANTOINE', 1);
 require __DIR__ . '/lib/core.php';
+require __DIR__ . '/lib/admin_ui.php';
 require __DIR__ . '/lib/notion.php';
 
 session_start();
@@ -38,24 +39,13 @@ function key_ok($v) { return $v && strpos($v, 'REMPLACER') === false; }
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<?php echo admin_head_links(); ?>
 <style>
-body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#EEF1F3;color:#22272B;margin:0}
-header{background:#2E3439;color:#fff;padding:16px 24px;border-bottom:6px solid #C8102E}
-header h1{margin:0;font-size:20px}
-main{max-width:860px;margin:0 auto;padding:24px}
-section{background:#fff;border:1px solid #D3D9DE;border-radius:6px;padding:18px 20px;margin-bottom:18px}
-h2{font-size:17px;margin:0 0 12px}
 table{border-collapse:collapse;width:100%;font-size:14px}
-td,th{border-bottom:1px solid #D3D9DE;padding:6px 8px;text-align:left}
+td,th{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left}
 td.n,th.n{text-align:right}
-.btn{border:0;border-radius:6px;padding:9px 16px;font-weight:700;background:#2E3439;color:#fff;cursor:pointer;font:inherit}
-.msg{padding:10px 14px;border-left:4px solid #2E7D4F;background:#fff;margin-bottom:18px}
-.msg.err{border-left-color:#B3261E}
-.hint{color:#5E6A72;font-size:13px}
-input[type=password]{padding:8px 10px;border:1px solid #D3D9DE;border-radius:6px;width:260px}
 </style></head><body>
-<header><h1>ElanCité Product AI — administration</h1></header>
-<main>
+<?php admin_shell_open('admin', 'Administration', !empty($logged)); ?>
 <?php if ($msg): ?><div class="msg<?php echo $ok ? '' : ' err'; ?>"><?php echo h($msg); ?></div><?php endif; ?>
 
 <?php if (!$configured): ?>
@@ -102,20 +92,20 @@ input[type=password]{padding:8px 10px;border:1px solid #D3D9DE;border-radius:6px
   </section>
   <section><h2>Analyse de la base</h2>
     <p>Questions pour affiner la connaissance produit, incohérences, idées de compléments et points ouverts, d'après l'état de la base.</p>
-    <a class="btn" href="analyse.php" style="text-decoration:none;display:inline-block">Ouvrir l'analyse de la base</a>
+    <a class="btn" href="analyse.php">Ouvrir l'analyse de la base</a>
   </section>
   <section><h2>Cartographie des sujets manquants</h2>
     <p>Tableaux des sujets qui manquent à chaque produit, par marché et par catégorie, d'après l'état de la base.</p>
-    <a class="btn" href="cartographie.php" style="text-decoration:none;display:inline-block">Ouvrir la cartographie</a>
+    <a class="btn" href="cartographie.php">Ouvrir la cartographie</a>
   </section>
   <section><h2>Cartographie du glossaire de traduction</h2>
     <p>Couverture du glossaire par section, terme, langue et source, et termes utilisés dans la base mais absents du glossaire.</p>
-    <a class="btn" href="glossaire.php" style="text-decoration:none;display:inline-block">Ouvrir la cartographie du glossaire</a>
+    <a class="btn" href="glossaire.php">Ouvrir la cartographie du glossaire</a>
   </section>
   <section><h2>Affirmations à confirmer</h2>
     <p>Affirmations déduites de la base, page par page : vous confirmez, infirmez ou précisez ; l'outil garde vos verdicts et signale ceux dont l'extrait de la base a changé.</p>
-    <a class="btn" href="affirmations.php" style="text-decoration:none;display:inline-block">Ouvrir les affirmations</a>
+    <a class="btn" href="affirmations.php">Ouvrir les affirmations</a>
   </section>
-  <form method="post"><button class="btn" name="logout" value="1" style="background:#5E6A72">Se déconnecter</button></form>
+  <form method="post"><button class="btn secondary" name="logout" value="1">Se déconnecter</button></form>
 <?php endif; ?>
-</main></body></html>
+<?php admin_shell_close(); ?></body></html>

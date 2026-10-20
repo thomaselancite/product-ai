@@ -139,20 +139,20 @@ function progress_poll($name) {
 function progress_css() {
     return <<<'CSS'
 #live{display:none}
-.bar{height:12px;background:#E3E8EC;border-radius:6px;overflow:hidden;margin:6px 0 4px}
-.bar>div{height:100%;width:0;background:#2E7D4F;transition:width .6s ease}
-.bar.err>div{background:#B3261E}
+.bar{height:12px;background:var(--line);border-radius:6px;overflow:hidden;margin:6px 0 4px}
+.bar>div{height:100%;width:0;background:var(--green);transition:width .6s ease}
+.bar.err>div{background:var(--red)}
 .steps{list-style:none;margin:14px 0 0;padding:0}
-.steps li{display:flex;gap:10px;padding:7px 0;border-top:1px solid #EEF1F3;font-size:14px}
+.steps li{display:flex;gap:10px;padding:7px 0;border-top:1px solid var(--line);font-size:14px}
 .steps li:first-child{border-top:0}
 .ico{flex:0 0 22px;text-align:center;font-weight:700}
-.ico.pending{color:#9AA5AD}.ico.done{color:#2E7D4F}.ico.error{color:#B3261E}
-.spin{display:inline-block;width:13px;height:13px;border:2px solid #D3D9DE;border-top-color:#2E3439;border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px}
+.ico.pending{color:var(--soft)}.ico.done{color:var(--green)}.ico.error{color:var(--red)}
+.spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px}
 @keyframes sp{to{transform:rotate(360deg)}}
 .steps .lbl{font-weight:600}
-.steps .det{color:#5E6A72;font-size:13px;margin-top:1px}
-.steps .dur{margin-left:auto;color:#5E6A72;font-size:13px;white-space:nowrap}
-li.pending .lbl{color:#9AA5AD;font-weight:400}
+.steps .det{color:var(--muted);font-size:13px;margin-top:1px}
+.steps .dur{margin-left:auto;color:var(--muted);font-size:13px;white-space:nowrap}
+li.pending .lbl{color:var(--soft);font-weight:400}
 CSS;
 }
 

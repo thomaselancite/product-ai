@@ -10,6 +10,7 @@
  */
 define('ANTOINE', 1);
 require __DIR__ . '/lib/core.php';
+require __DIR__ . '/lib/admin_ui.php';
 require __DIR__ . '/lib/notion.php';
 require __DIR__ . '/lib/claude.php';
 require __DIR__ . '/lib/prompts.php';
@@ -174,45 +175,33 @@ foreach ($perMarket as $mk => $l) { usort($perMarket[$mk], function ($a, $b) use
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<?php echo admin_head_links(); ?>
 <style>
-body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#EEF1F3;color:#22272B;margin:0}
-header{background:#2E3439;color:#fff;padding:16px 24px;border-bottom:6px solid #C8102E}
-header h1{margin:0;font-size:20px}
-header a{color:#fff;font-size:14px}
-main{max-width:1100px;margin:0 auto;padding:24px}
-section{background:#fff;border:1px solid #D3D9DE;border-radius:6px;padding:18px 20px;margin-bottom:18px}
-h2{font-size:17px;margin:0 0 12px}
-.btn{border:0;border-radius:6px;padding:9px 16px;font-weight:700;background:#2E3439;color:#fff;cursor:pointer;font:inherit}
-.btn:disabled{opacity:.5;cursor:default}
-.msg{padding:10px 14px;border-left:4px solid #2E7D4F;background:#fff;margin-bottom:18px}
-.msg.err{border-left-color:#B3261E}
-.hint{color:#5E6A72;font-size:13px}
-.warn{color:#B3261E;font-size:12px;font-weight:700}
-.ref{color:#5E6A72;font-size:13px;margin-top:2px}
-.tag{display:inline-block;font-size:12px;font-weight:700;border-radius:4px;padding:1px 7px;background:#EEF1F3;margin-right:6px}
-.tag.forte{background:#F8D7DA}.tag.moyenne{background:#FFE9C7}
+.warn{color:var(--red);font-size:12px;font-weight:700}
+.ref{color:var(--muted);font-size:13px;margin-top:2px}
+.tag{display:inline-block;font-size:12px;font-weight:700;border-radius:4px;padding:1px 7px;background:var(--hover);margin-right:6px}
+.tag.forte{background:var(--red-bg)}.tag.moyenne{background:var(--amber-soft)}
 .wrap{overflow-x:auto}
 table.map{border-collapse:collapse;width:100%;font-size:14px}
-table.map th,table.map td{border:1px solid #D3D9DE;padding:6px 8px;text-align:center}
-table.map th{background:#EEF1F3;font-size:13px}
+table.map th,table.map td{border:1px solid var(--line);padding:6px 8px;text-align:center}
+table.map th{background:var(--hover);font-size:13px}
 table.map td.name,table.map th.name{text-align:left;white-space:nowrap}
 table.map a{color:inherit;text-decoration:none}
-td.na{background:#F4F6F8;color:#9AA5AD}
-td.c0{background:#E4F2E9}td.c1{background:#FFF6D6}td.c2{background:#FFE0B8}td.c3{background:#F8C9C9}
+td.na{background:var(--bg);color:var(--soft)}
+td.c0{background:#ECFDF3}td.c1{background:#FFFAEB}td.c2{background:#FEF0C7}td.c3{background:#FEE4E2}
 td .n{font-weight:700;font-size:15px}
-td .d{display:block;font-size:11px;color:#5E6A72}
-.legend span{display:inline-block;padding:1px 8px;border:1px solid #D3D9DE;margin-right:6px;font-size:12px}
-details{border-top:1px solid #D3D9DE;padding:8px 0}
+td .d{display:block;font-size:11px;color:var(--muted)}
+.legend span{display:inline-block;padding:1px 8px;border:1px solid var(--line);margin-right:6px;font-size:12px}
+details{border-top:1px solid var(--line);padding:8px 0}
 details:first-of-type{border-top:0}
 summary{cursor:pointer;font-weight:600}
-.item{border-top:1px solid #EEF1F3;padding:8px 0 8px 12px}
+.item{border-top:1px solid var(--hover);padding:8px 0 8px 12px}
 .item:first-of-type{border-top:0}
 .why{font-size:14px;margin-top:2px}
 <?php echo progress_css(); ?>
 
 </style></head><body>
-<header><h1>ElanCité Product AI — cartographie des sujets manquants</h1> <a href="admin.php">← Administration</a></header>
-<main>
+<?php admin_shell_open('cartographie', 'Cartographie des sujets manquants', true); ?>
 
 <section><h2>Cartographie des sujets manquants</h2>
   <p>Pour chaque produit de la base (pages « À valider » comprises, pages « Obsolète » exclues), Claude déduit de la lecture les sujets qui manquent et les marchés concernés. Les marchés de chaque produit et leur niveau de documentation viennent des propriétés Notion « Marchés » et « Marchés documentés » ; les sujets manquants sont des <strong>pistes déduites</strong>, à vérifier : rien n'est écrit dans Notion, et les compléments se traitent ensuite dans le projet Claude.</p>
@@ -236,7 +225,7 @@ summary{cursor:pointer;font-weight:600}
   </section>
 
   <section><h2>Produits × marchés</h2>
-    <p class="hint legend">Nombre de sujets manquants par marché. <span class="c0" style="background:#E4F2E9">0</span><span style="background:#FFF6D6">1–2</span><span style="background:#FFE0B8">3–4</span><span style="background:#F8C9C9">5 et +</span><span style="background:#F4F6F8">— marché non commercialisé</span> « doc. » = source dédiée au produit pour ce marché ; « sans source » = aucune (propriété « Marchés documentés »).</p>
+    <p class="hint legend">Nombre de sujets manquants par marché. <span class="c0" style="background:#ECFDF3">0</span><span style="background:#FFFAEB">1–2</span><span style="background:#FEF0C7">3–4</span><span style="background:#FEE4E2">5 et +</span><span style="background:#F4F6F8">— marché non commercialisé</span> « doc. » = source dédiée au produit pour ce marché ; « sans source » = aucune (propriété « Marchés documentés »).</p>
     <div class="wrap"><table class="map"><thead><tr><th class="name">Produit</th><th>Famille</th>
       <?php foreach ($markets as $mk): ?><th><?php echo h(mk_label($mk)); ?></th><?php endforeach; ?><th>Total</th></tr></thead><tbody>
     <?php foreach ($map['produits'] as $pi => $row): ?>
@@ -295,7 +284,7 @@ summary{cursor:pointer;font-weight:600}
     <?php endforeach; ?>
   </section>
 <?php endif; ?>
-</main>
+<?php admin_shell_close(); ?>
 <script>
 <?php echo progress_js(['endpoint' => 'cartographie.php', 'running' => 'Cartographie en cours…', 'done' => 'Cartographie terminée', 'fail' => 'Cartographie en échec',
   'btn_running' => 'Cartographie en cours…', 'btn_again' => 'Relancer la cartographie',

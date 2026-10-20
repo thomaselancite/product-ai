@@ -10,6 +10,7 @@
  */
 define('ANTOINE', 1);
 require __DIR__ . '/lib/core.php';
+require __DIR__ . '/lib/admin_ui.php';
 require __DIR__ . '/lib/notion.php';
 require __DIR__ . '/lib/claude.php';
 require __DIR__ . '/lib/prompts.php';
@@ -177,51 +178,39 @@ function cell_html($cell) {
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<?php echo admin_head_links(); ?>
 <style>
-body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#EEF1F3;color:#22272B;margin:0}
-header{background:#2E3439;color:#fff;padding:16px 24px;border-bottom:6px solid #C8102E}
-header h1{margin:0;font-size:20px}
-header a{color:#fff;font-size:14px}
-main{max-width:1100px;margin:0 auto;padding:24px}
-section{background:#fff;border:1px solid #D3D9DE;border-radius:6px;padding:18px 20px;margin-bottom:18px}
-h2{font-size:17px;margin:0 0 12px}
-.btn{border:0;border-radius:6px;padding:9px 16px;font-weight:700;background:#2E3439;color:#fff;cursor:pointer;font:inherit}
-.btn:disabled{opacity:.5;cursor:default}
-.msg{padding:10px 14px;border-left:4px solid #2E7D4F;background:#fff;margin-bottom:18px}
-.msg.err{border-left-color:#B3261E}
-.hint{color:#5E6A72;font-size:13px}
-.warn{color:#B3261E;font-size:12px;font-weight:700}
-.ref{color:#5E6A72;font-size:13px;margin-top:2px}
-.tag{display:inline-block;font-size:12px;font-weight:700;border-radius:4px;padding:1px 7px;background:#EEF1F3;margin-right:6px}
-.tag.forte{background:#F8D7DA}.tag.moyenne{background:#FFE9C7}
+.warn{color:var(--red);font-size:12px;font-weight:700}
+.ref{color:var(--muted);font-size:13px;margin-top:2px}
+.tag{display:inline-block;font-size:12px;font-weight:700;border-radius:4px;padding:1px 7px;background:var(--hover);margin-right:6px}
+.tag.forte{background:var(--red-bg)}.tag.moyenne{background:var(--amber-soft)}
 .wrap{overflow-x:auto}
 table.map{border-collapse:collapse;width:100%;font-size:14px}
-table.map th,table.map td{border:1px solid #D3D9DE;padding:6px 8px;text-align:center}
-table.map th{background:#EEF1F3;font-size:13px}
+table.map th,table.map td{border:1px solid var(--line);padding:6px 8px;text-align:center}
+table.map th{background:var(--hover);font-size:13px}
 table.map td.name,table.map th.name{text-align:left;white-space:nowrap}
 table.map a{color:inherit;text-decoration:none}
-td.na{background:#F4F6F8;color:#9AA5AD}
-td.c0{background:#E4F2E9}td.c1{background:#FFF6D6}td.c2{background:#FFE0B8}td.c3{background:#F8C9C9}
+td.na{background:var(--bg);color:var(--soft)}
+td.c0{background:#ECFDF3}td.c1{background:#FFFAEB}td.c2{background:#FEF0C7}td.c3{background:#FEE4E2}
 td .n{font-weight:700;font-size:15px}
-td .d{display:block;font-size:11px;color:#5E6A72}
-.legend span{display:inline-block;padding:1px 8px;border:1px solid #D3D9DE;margin-right:6px;font-size:12px}
-details{border-top:1px solid #D3D9DE;padding:8px 0}
+td .d{display:block;font-size:11px;color:var(--muted)}
+.legend span{display:inline-block;padding:1px 8px;border:1px solid var(--line);margin-right:6px;font-size:12px}
+details{border-top:1px solid var(--line);padding:8px 0}
 details:first-of-type{border-top:0}
 summary{cursor:pointer;font-weight:600}
-.item{border-top:1px solid #EEF1F3;padding:8px 0 8px 12px}
+.item{border-top:1px solid var(--hover);padding:8px 0 8px 12px}
 .item:first-of-type{border-top:0}
 .why{font-size:14px;margin-top:2px}
-.cov{font-size:12px;color:#5E6A72;display:block}
+.cov{font-size:12px;color:var(--muted);display:block}
 td.t{text-align:left;font-size:13px;vertical-align:top}
-td.gap{background:#F8C9C9;color:#B3261E;font-weight:700}
-td.mu{background:#FFE9C7}
-tr.sechead td{background:#EEF1F3;font-weight:700;text-align:left}
-.ok{color:#2E7D4F}
+td.gap{background:#FEE4E2;color:var(--red);font-weight:700}
+td.mu{background:var(--amber-soft)}
+tr.sechead td{background:var(--hover);font-weight:700;text-align:left}
+.ok{color:var(--green)}
 <?php echo progress_css(); ?>
 
 </style></head><body>
-<header><h1>ElanCité Product AI — cartographie du glossaire de traduction</h1> <a href="admin.php">← Administration</a></header>
-<main>
+<?php admin_shell_open('glossaire', 'Cartographie du glossaire de traduction', true); ?>
 <?php if ($msg !== ''): ?><div class="msg<?php echo $msgOk ? '' : ' err'; ?>"><?php echo h($msg); ?></div><?php endif; ?>
 
 <section><h2>Glossaire de traduction : couverture</h2>
@@ -238,7 +227,7 @@ tr.sechead td{background:#EEF1F3;font-weight:700;text-align:left}
 
 <?php if ($glo && $st): ?>
   <section><h2>Sections × langues</h2>
-    <p class="hint legend">Part des termes FR de la section qui ont au moins un terme dans la langue (case « — » = lacune). <span style="background:#E4F2E9">90 % et +</span><span style="background:#FFF6D6">60–89 %</span><span style="background:#FFE0B8">30–59 %</span><span style="background:#F8C9C9">moins de 30 %</span><span style="background:#F4F6F8">non traité = pas de colonne</span> Pour une section en liste (par pays), le nombre d'éléments listés.</p>
+    <p class="hint legend">Part des termes FR de la section qui ont au moins un terme dans la langue (case « — » = lacune). <span style="background:#ECFDF3">90 % et +</span><span style="background:#FFFAEB">60–89 %</span><span style="background:#FEF0C7">30–59 %</span><span style="background:#FEE4E2">moins de 30 %</span><span style="background:#F4F6F8">non traité = pas de colonne</span> Pour une section en liste (par pays), le nombre d'éléments listés.</p>
     <div class="wrap"><table class="map"><thead><tr><th class="name">Section</th><th>Termes FR</th>
       <?php foreach ($langs as $lg): ?><th><?php echo h($lg); ?></th><?php endforeach; ?></tr></thead><tbody>
     <?php foreach ($st['sections'] as $s): ?>
@@ -319,7 +308,7 @@ tr.sechead td{background:#EEF1F3;font-weight:700;text-align:left}
     <?php endif; ?>
   </section>
 <?php endif; ?>
-</main>
+<?php admin_shell_close(); ?>
 <script>
 (function () {
   var cb = document.getElementById('gaps'); if (!cb) return;
