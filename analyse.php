@@ -9,6 +9,7 @@
  */
 define('ANTOINE', 1);
 require __DIR__ . '/lib/core.php';
+require __DIR__ . '/lib/admin_ui.php';
 require __DIR__ . '/lib/notion.php';
 require __DIR__ . '/lib/claude.php';
 require __DIR__ . '/lib/prompts.php';
@@ -181,32 +182,20 @@ function ref_line($r) { return $r !== '' && $r !== null ? '<div class="ref">' . 
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<?php echo admin_head_links(); ?>
 <style>
-body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:#EEF1F3;color:#22272B;margin:0}
-header{background:#2E3439;color:#fff;padding:16px 24px;border-bottom:6px solid #C8102E}
-header h1{margin:0;font-size:20px}
-header a{color:#fff;font-size:14px}
-main{max-width:860px;margin:0 auto;padding:24px}
-section{background:#fff;border:1px solid #D3D9DE;border-radius:6px;padding:18px 20px;margin-bottom:18px}
-h2{font-size:17px;margin:0 0 12px}
-.btn{border:0;border-radius:6px;padding:9px 16px;font-weight:700;background:#2E3439;color:#fff;cursor:pointer;font:inherit}
-.btn:disabled{opacity:.5;cursor:default}
-.msg{padding:10px 14px;border-left:4px solid #2E7D4F;background:#fff;margin-bottom:18px}
-.msg.err{border-left-color:#B3261E}
-.hint{color:#5E6A72;font-size:13px}
-.item{border-top:1px solid #D3D9DE;padding:10px 0}
+.item{border-top:1px solid var(--line);padding:10px 0}
 .item:first-of-type{border-top:0}
-.ref{color:#5E6A72;font-size:13px;margin-top:2px}
+.ref{color:var(--muted);font-size:13px;margin-top:2px}
 .why{font-size:14px;margin-top:2px}
-.warn{color:#B3261E;font-size:12px;font-weight:700}
-.okv{color:#2E7D4F;font-size:12px;font-weight:700}
-blockquote{margin:6px 0 0;padding:4px 10px;border-left:3px solid #D3D9DE;font-size:14px}
-.tag{display:inline-block;font-size:12px;font-weight:700;border-radius:4px;padding:1px 7px;background:#EEF1F3;margin-right:6px}
-.tag.forte{background:#F8D7DA}.tag.moyenne{background:#FFE9C7}
+.warn{color:var(--red);font-size:12px;font-weight:700}
+.okv{color:var(--green);font-size:12px;font-weight:700}
+blockquote{margin:6px 0 0;padding:4px 10px;border-left:3px solid var(--line);font-size:14px}
+.tag{display:inline-block;font-size:12px;font-weight:700;border-radius:4px;padding:1px 7px;background:var(--hover);margin-right:6px}
+.tag.forte{background:var(--red-bg)}.tag.moyenne{background:var(--amber-soft)}
 <?php echo progress_css(); ?>
 </style></head><body>
-<header><h1>ElanCité Product AI — analyse de la base</h1> <a href="admin.php">← Administration</a></header>
-<main>
+<?php admin_shell_open('analyse', 'Analyse de la base', true); ?>
 <?php if ($msg): ?><div class="msg<?php echo $ok ? '' : ' err'; ?>"><?php echo h($msg); ?></div><?php endif; ?>
 
 <section><h2>Analyse de la base</h2>
@@ -262,7 +251,7 @@ blockquote{margin:6px 0 0;padding:4px 10px;border-left:3px solid #D3D9DE;font-si
       <?php echo ref_line($p['reference'] ?? ''); echo warn_ref($p['_ref_ok'] ?? null); ?></div>
   <?php endforeach; ?></section>
 <?php endif; ?>
-</main>
+<?php admin_shell_close(); ?>
 <script>
 <?php echo progress_js(['endpoint' => 'analyse.php', 'running' => 'Analyse en cours…', 'done' => 'Analyse terminée', 'fail' => 'Analyse en échec',
   'btn_running' => 'Analyse en cours…', 'btn_again' => "Relancer l'analyse",
