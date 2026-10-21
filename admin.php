@@ -112,6 +112,10 @@ td.n,th.n{text-align:right}
     <p>Affirmations déduites de la base, page par page : vous confirmez, infirmez ou précisez ; l'outil garde vos verdicts et signale ceux dont l'extrait de la base a changé.</p>
     <a class="btn" href="affirmations.php">Ouvrir les affirmations</a>
   </section>
+  <section><h2>Comptes</h2>
+    <p>Créer, désactiver ou modifier les comptes des agences et des administrateurs, et réinitialiser un mot de passe.</p>
+    <a class="btn" href="comptes.php">Ouvrir la gestion des comptes</a>
+  </section>
   <form method="post"><button class="btn secondary" name="logout" value="1">Se déconnecter</button></form>
 <?php endif; ?>
 <?php admin_shell_close(); ?></body></html>
