@@ -39,7 +39,7 @@ function antoine_admin_password_configured() {
 function antoine_accounts_seed() {
     $c = antoine_config(); $now = gmdate('c'); $acc = [];
     if (antoine_admin_password_configured()) {
-        $acc['admin'] = ['login' => 'admin', 'name' => 'Elan Cité', 'role' => 'admin', 'hash' => password_hash((string) $c['admin_password'], PASSWORD_DEFAULT), 'active' => true, 'created' => $now, 'updated' => $now];
+        $acc['admin'] = ['login' => 'admin', 'name' => 'ElanCité', 'role' => 'admin', 'hash' => password_hash((string) $c['admin_password'], PASSWORD_DEFAULT), 'active' => true, 'created' => $now, 'updated' => $now];
     }
     foreach ((array) ($c['agencies'] ?? []) as $name => $code) {
         if (!is_string($code) || strlen($code) < 12 || strpos($code, 'REMPLACER') !== false) continue;
@@ -125,7 +125,7 @@ function antoine_login($login, $password) {
               && hash_equals((string) antoine_config()['admin_password'], $password)) {
         // Secours : aucun administrateur actif, le mot de passe de config.php ouvre le compte « admin ».
         $recovery = true;
-        $user = ['login' => 'admin', 'name' => 'Elan Cité', 'role' => 'admin', 'agency' => 'Elan Cité', 'recovery' => true];
+        $user = ['login' => 'admin', 'name' => 'ElanCité', 'role' => 'admin', 'agency' => 'ElanCité', 'recovery' => true];
     }
     if ($user === null) {
         antoine_login_record_failure($login);
@@ -155,7 +155,7 @@ function antoine_session_user() {
     if (!$s || ($s['expires'] ?? 0) < $now) return null;
     if (!empty($s['recovery'])) {
         if (antoine_has_active_admin() || !antoine_admin_password_configured()) return null;
-        $user = ['login' => 'admin', 'name' => 'Elan Cité', 'role' => 'admin', 'agency' => 'Elan Cité', 'recovery' => true];
+        $user = ['login' => 'admin', 'name' => 'ElanCité', 'role' => 'admin', 'agency' => 'ElanCité', 'recovery' => true];
     } else {
         $acc = antoine_accounts()[$s['login']] ?? null;
         if (!$acc || empty($acc['active'])) return null;

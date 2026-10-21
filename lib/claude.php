@@ -41,7 +41,7 @@ function antoine_ia_claude_call($kbText, $instructions, $messages, $s) {
 
     if ($code === 0) throw new AntoineError('antoine_claude', "Claude n'a pas répondu à temps ou est injoignable (" . $err . '). Relancez dans quelques instants.', 504);
     if ($code >= 300) throw antoine_ia_claude_error($code, $json);
-    if (($json['stop_reason'] ?? '') === 'refusal') throw new AntoineError('antoine_refusal', 'Claude a décliné cette demande. Reformulez-la ou contactez Elan Cité.', 422);
+    if (($json['stop_reason'] ?? '') === 'refusal') throw new AntoineError('antoine_refusal', 'Claude a décliné cette demande. Reformulez-la ou contactez ElanCité.', 422);
 
     // Les blocs de réflexion sont ignorés : seul le texte compte
     $text = '';
@@ -122,7 +122,7 @@ function antoine_ia_claude_stream($kbText, $instructions, $messages, $s, callabl
         $busy = in_array($sseErr['type'] ?? '', ['overloaded_error', 'rate_limit_error'], true);
         return [$text, $cost, $busy ? antoine_ia_claude_error(529, null) : new AntoineError('antoine_claude', 'Claude a interrompu la réponse : ' . ($sseErr['message'] ?? 'erreur'), 502)];
     }
-    if ($stop === 'refusal') return [$text, $cost, new AntoineError('antoine_refusal', 'Claude a décliné cette demande. Reformulez-la ou contactez Elan Cité.', 422)];
+    if ($stop === 'refusal') return [$text, $cost, new AntoineError('antoine_refusal', 'Claude a décliné cette demande. Reformulez-la ou contactez ElanCité.', 422)];
     if ($stop === 'max_tokens' && $text === '') return [$text, $cost, new AntoineError('antoine_too_long', 'La réponse a dépassé la longueur maximale. Découpez le contenu en parties plus courtes.', 502)];
     return [$text, $cost, null];
 }

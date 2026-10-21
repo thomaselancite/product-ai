@@ -74,7 +74,7 @@ try {
         $month = gmdate('Y-m');
         $usage = antoine_read('usage', []);
         if ((float) $s['monthly_budget'] > 0 && (float) ($usage[$month]['total'] ?? 0) >= (float) $s['monthly_budget']) {
-            throw new AntoineError('antoine_budget', "Le budget mensuel de l'outil est atteint. Contactez Elan Cité.", 429);
+            throw new AntoineError('antoine_budget', "Le budget mensuel de l'outil est atteint. Contactez ElanCité.", 429);
         }
 
         $p = json_decode((string) file_get_contents('php://input'), true);
@@ -133,5 +133,5 @@ try {
     antoine_out(['code' => $e->key, 'message' => $e->getMessage()], $e->status);
 } catch (Throwable $e) {
     error_log('ElanCité Product AI : ' . $e->getMessage());
-    antoine_out(['code' => 'antoine_server', 'message' => 'Erreur interne du serveur. Réessayez ; si le problème persiste, contactez Elan Cité.'], 500);
+    antoine_out(['code' => 'antoine_server', 'message' => 'Erreur interne du serveur. Réessayez ; si le problème persiste, contactez ElanCité.'], 500);
 }
