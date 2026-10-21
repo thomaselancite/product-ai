@@ -35,15 +35,29 @@ function antoine_ia_stream_event($data) {
 try {
     $action = (string) ($_GET['action'] ?? '');
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-    $agency = antoine_agency();
 
+    // Connexion (identifiant + mot de passe) : pose le cookie de session.
     if ($action === 'auth' && $method === 'POST') {
-        usleep(400000); // freine les essais de codes en série
-        if ($agency === null) throw new AntoineError('antoine_unauthorized', "Code d'accès invalide.", 401);
-        antoine_out(['agency' => $agency]);
+        $in = json_decode((string) file_get_contents('php://input'), true);
+        if (!is_array($in)) throw new AntoineError('antoine_input', 'Requête illisible.', 400);
+        $u = antoine_login($in['login'] ?? '', $in['password'] ?? '');
+        antoine_out(['user' => $u, 'csrf' => antoine_csrf()]);
     }
 
-    if ($agency === null) throw new AntoineError('antoine_unauthorized', "Code d'accès invalide.", 401);
+    $user = antoine_session_user();
+
+    // État de la session (au chargement de la page).
+    if ($action === 'me' && $method === 'GET') {
+        if ($user === null) throw new AntoineError('antoine_unauthorized', 'Session expirée ou absente.', 401);
+        antoine_out(['user' => $user, 'csrf' => antoine_csrf()]);
+    }
+
+    if ($user === null) throw new AntoineError('antoine_unauthorized', 'Session expirée : reconnectez-vous.', 401);
+    // Toute requête qui modifie quelque chose doit porter le jeton CSRF de la session.
+    if ($method !== 'GET' && !antoine_csrf_ok($_SERVER['HTTP_X_ANTOINE_CSRF'] ?? '')) throw new AntoineError('antoine_csrf', 'Requête refusée (jeton de sécurité invalide). Rechargez la page.', 403);
+    $agency = $user['agency'];
+
+    if ($action === 'logout' && $method === 'POST') { antoine_logout(); antoine_out(['ok' => true]); }
 
     if ($action === 'kb' && $method === 'GET') {
         $kb = antoine_ia_load_kb(false);

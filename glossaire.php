@@ -17,13 +17,12 @@ require __DIR__ . '/lib/prompts.php';
 require __DIR__ . '/lib/glossaire.php';
 require __DIR__ . '/lib/progress.php';
 
-session_start();
 header('X-Robots-Tag: noindex, nofollow');
 header('Cache-Control: no-store');
 
 $action = (string) ($_GET['action'] ?? '');
-$logged = !empty($_SESSION['antoine_admin']);
-$csrf = (string) ($_SESSION['csrf'] ?? '');
+$logged = antoine_admin_user() !== null;
+$csrf = $logged ? antoine_csrf() : '';
 
 function h($s) { return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8'); }
 
@@ -150,8 +149,6 @@ if (isset($_POST['reload']) && hash_equals($csrf, (string) ($_POST['csrf'] ?? ''
     try { $kb0 = antoine_ia_load_kb(true); $msg = 'Base relue dans Notion (' . count($kb0['pages']) . ' pages produit).'; }
     catch (AntoineError $e) { $msg = $e->getMessage(); $msgOk = false; }
 }
-
-session_write_close();
 
 /* ---------- Page ---------- */
 $running = progress_running('glossaire');

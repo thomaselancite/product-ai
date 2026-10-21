@@ -15,13 +15,12 @@ require __DIR__ . '/lib/claude.php';
 require __DIR__ . '/lib/prompts.php';
 require __DIR__ . '/lib/progress.php';
 
-session_start();
 header('X-Robots-Tag: noindex, nofollow');
 header('Cache-Control: no-store');
 
 $action = (string) ($_GET['action'] ?? '');
-$logged = !empty($_SESSION['antoine_admin']);
-$csrf = (string) ($_SESSION['csrf'] ?? '');
+$logged = antoine_admin_user() !== null;
+$csrf = $logged ? antoine_csrf() : '';
 
 function h($s) { return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8'); }
 function analyse_json($data, $status = 200) {
@@ -158,8 +157,6 @@ if ($action === 'run' && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
 /* ---------- Avancement : lu toutes les secondes par la page ---------- */
 if ($action === 'progress') progress_poll('analyse');
-
-session_write_close();
 
 /* ---------- Page ---------- */
 $running = progress_running('analyse');

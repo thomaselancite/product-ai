@@ -24,6 +24,7 @@ function admin_shell_open($active, $title, $nav = true) {
         'cartographie' => ['cartographie.php', 'Sujets manquants', $ico('<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/>')],
         'glossaire' => ['glossaire.php', 'Glossaire', $ico('<path d="M4 5h16M4 12h16M4 19h10"/>')],
         'affirmations' => ['affirmations.php', 'Affirmations', $ico('<circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>')],
+        'comptes' => ['comptes.php', 'Comptes', $ico('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c1.8.7 3 2.3 3.5 5.2"/>')],
     ];
     $h = function ($t) { return htmlspecialchars($t, ENT_QUOTES, 'UTF-8'); };
     echo '<div class="admin-shell">' . "\n" . '<aside class="admin-side">' . "\n";

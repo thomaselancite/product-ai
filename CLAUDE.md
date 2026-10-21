@@ -27,7 +27,7 @@ Le format de réponse des trois tâches reste dans le code (`lib/prompts.php`) :
 Le code vit dans le dépôt GitHub privé `thomaselancite/product-ai`. Toute modification passe par une branche et une pull request ; la fusion dans `main` déploie automatiquement sur l'hébergement OVH en SFTP (lftp), comme le dépôt `creation-site-web` (`.github/workflows/deploy.yml`). Le workflow peut aussi être lancé à la main (« Run workflow », simulation par défaut). `check-ovh.yml` teste la connexion et le dossier distant en lecture seule.
 
 - Secrets du déploiement : secrets GitHub Actions `EC_SSH_HOST`, `EC_SSH_USER`, `EC_SSH_PASS`, `EC_SSH_DIR` (dossier de l'outil tel qu'indiqué dans l'onglet « Mes sites » OVH, souvent relatif) et, si besoin, `EC_SSH_PORT` (22 par défaut). Ne jamais les écrire dans le dépôt.
-- `config.php` (clés Claude et Notion, mot de passe admin, codes des agences) et `data/*.php` (cache, compteurs) ne sont pas dans le dépôt (`.gitignore`), ne sont jamais envoyés et ne sont jamais supprimés par le déploiement. `config.example.php` en est le modèle ; toute nouvelle clé de configuration doit y être ajoutée et signalée, car elle doit aussi être ajoutée à la main dans `config.php` sur le serveur.
+- `config.php` (clés Claude et Notion, mot de passe admin et mots de passe initiaux des agences, lus une seule fois pour créer les comptes) et `data/*.php` (cache, compteurs) ne sont pas dans le dépôt (`.gitignore`), ne sont jamais envoyés et ne sont jamais supprimés par le déploiement. `config.example.php` en est le modèle ; toute nouvelle clé de configuration doit y être ajoutée et signalée, car elle doit aussi être ajoutée à la main dans `config.php` sur le serveur.
 - Le déploiement est un miroir (`mirror --reverse --delete`) : un fichier retiré du dépôt est supprimé du serveur. `EC_SSH_DIR` doit donc être un dossier dédié à cet outil. Le dossier distant n'est jamais créé automatiquement. Une simulation précède toujours l'envoi et arrête le déploiement si elle supprimerait `config.php` ou `data/*.php`.
 - Après tout changement du workflow : lancer d'abord `check-ovh.yml`, puis le déploiement en simulation.
 - Avant de fusionner : la vérification de syntaxe PHP du workflow doit être au vert.
@@ -53,7 +53,7 @@ Règles de modification :
 
 ## Analyse de la base (`analyse.php`)
 
-Page réservée à l'administrateur (session d'`admin.php`, jeton CSRF). Un appel à Claude sur la base entière, pages « À valider » comprises et pages « Obsolète » exclues, produit un rapport : questions pour affiner, incohérences, idées de compléments, points ouverts. Le dernier rapport est conservé dans `data/analyse.php` (non déployé, non versionné) ; la page signale quand la base a changé depuis (empreinte du texte transmis à Claude).
+Page réservée à l'administrateur (session d'un compte administrateur, jeton CSRF). Un appel à Claude sur la base entière, pages « À valider » comprises et pages « Obsolète » exclues, produit un rapport : questions pour affiner, incohérences, idées de compléments, points ouverts. Le dernier rapport est conservé dans `data/analyse.php` (non déployé, non versionné) ; la page signale quand la base a changé depuis (empreinte du texte transmis à Claude).
 
 - Consignes : section « Analyse » de la page Notion « Consignes Claude » (clé `analyse` de `antoine_ia_parse_consignes`), avec repli sur `lib/consignes/analyse.md`. Le format de réponse JSON est dans `lib/prompts.php` (`antoine_ia_analysis_format`) : toute modification doit être reportée dans `analyse.php` et dans `antoine_ia_analysis_check`.
 - Contrôle sans second appel à Claude (`antoine_ia_analysis_check`) : chaque référence « Page > Section » et chaque extrait d'incohérence est recherché dans la base, à la mise en forme près ; ce qui n'est pas retrouvé est marqué « ⚠ ». Le rapport reste une liste de pistes à vérifier : rien n'est écrit dans Notion, les corrections passent par le projet Claude.
@@ -85,3 +85,14 @@ Page réservée à l'administrateur, lecture seule vis-à-vis de Notion (jamais 
 - Détection des changements, sans Claude et à chaque affichage (`antoine_claim_state`) : extrait toujours dans la copie de la base → « ok » ; introuvable → « à revoir » (verdict conservé mais figé, avant/après affichés, archivage proposé) ; page absente → « page absente ». Limite connue : une modification hors de l'extrait n'est pas détectée, une reformulation sans changement de sens est signalée.
 - Consignes : section facultative « Affirmations » de la page Notion « Consignes Claude », repli sur `lib/consignes/affirmations.md` (à resynchroniser). Consommation sous « Admin (affirmations) », soumise au budget mensuel. `progress_js` accepte `fields` (champs de formulaire envoyés en plus, ici `page`).
 
+## Authentification
+
+- Un seul système : comptes nominatifs (identifiant en lettres/chiffres minuscules, 3 à 32 caractères + mot de passe), rôles `admin` et `agency`. Code dans `lib/auth.php`, inclus par `lib/core.php`.
+- Les comptes sont dans `data/accounts` (mots de passe hachés avec `password_hash`). Au premier appel, ils sont créés depuis `config.php` (`admin_password` → compte `admin`, `agencies` → un compte par agence, ancien code = mot de passe initial) ; ces clés ne sont plus relues ensuite. Les comptes se gèrent dans `comptes.php`.
+- Secours : tant qu'aucun admin actif n'existe, `admin` + `admin_password` de `config.php` ouvre une session.
+- Sessions : cookie HttpOnly `antoine_sid`, jeton aléatoire stocké haché (SHA-256) dans `data/sessions`, 14 jours glissants. Pas de session PHP native.
+- CSRF : jeton lié à la session (`antoine_csrf()`) ; champ `csrf` des formulaires, en-tête `X-Antoine-Csrf` pour l'API sur toute requête non GET.
+- Essais de connexion limités (5 échecs / 15 min par IP + identifiant).
+- Toute nouvelle page d'administration : `antoine_admin_user()` en tête (sinon redirection vers `admin.php`), `antoine_csrf()` sur les formulaires, entrée ajoutée dans `lib/admin_ui.php`.
+- Toute nouvelle action d'API passe après `antoine_session_user()` ; `$agency` vient du compte, jamais de la requête.
+- Jamais de mot de passe en clair dans le dépôt, Notion ou le chat : un mot de passe généré n'est affiché qu'une fois, dans la page Comptes.

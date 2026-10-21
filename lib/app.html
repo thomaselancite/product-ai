@@ -383,15 +383,21 @@ nav.tabs button[aria-selected="true"]{background:var(--accent-soft);color:var(--
 <div class="content">
 <div class="login" id="login" hidden>
   <div class="panel login-box">
-    <h2>Accès agences</h2>
-    <p class="lead">Saisissez le code d'accès transmis par Elan Cité.</p>
-    <div class="field">
-      <label for="code">Code d'accès</label>
-      <input type="password" id="code" autocomplete="current-password">
-    </div>
-    <div class="actions">
-      <button class="btn" id="loginBtn">Entrer</button>
-    </div>
+    <h2>Connexion</h2>
+    <p class="lead">Saisissez l'identifiant et le mot de passe transmis par Elan Cité.</p>
+    <form id="loginForm" novalidate>
+      <div class="field">
+        <label for="loginId">Identifiant</label>
+        <input type="text" id="loginId" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="32">
+      </div>
+      <div class="field">
+        <label for="loginPwd">Mot de passe</label>
+        <input type="password" id="loginPwd" autocomplete="current-password">
+      </div>
+      <div class="actions">
+        <button class="btn" type="submit" id="loginBtn">Entrer</button>
+      </div>
+    </form>
     <div class="error" id="loginError" role="alert" hidden></div>
   </div>
 </div>
@@ -621,17 +627,16 @@ for (const id of ["rType","bType"]) fill($(id), TYPES);
 
 /* ---------- Accès et serveur (api.php) ---------- */
 const API = (window.ANTOINE_CONFIG && window.ANTOINE_CONFIG.api) || "api.php";
-const CODE_KEY = "antoine_ia_code";
-let accessCode = "", agencyName = "", authed = false;
-function readCode(){ try{ return localStorage.getItem(CODE_KEY) || ""; }catch(_){ return ""; } }
-function storeCode(c){ try{ if(c) localStorage.setItem(CODE_KEY, c); else localStorage.removeItem(CODE_KEY); }catch(_){} }
+/* La session est portée par un cookie HttpOnly posé par le serveur ; seul le jeton anti-CSRF est gardé en mémoire. */
+let csrfToken = "", agencyName = "", userRole = "", authed = false;
+try{ localStorage.removeItem("antoine_ia_code"); }catch(_){} // ancien code d'accès, plus utilisé
 
 async function api(path, body, signal){
   let res;
   try{
     res = await fetch(API + "?action=" + encodeURIComponent(path), {
       method: body ? "POST" : "GET",
-      headers: Object.assign({"X-Antoine-Code": accessCode}, body ? {"Content-Type":"application/json"} : {}),
+      headers: body ? {"Content-Type":"application/json", "X-Antoine-Csrf": csrfToken} : {},
       body: body ? JSON.stringify(body) : undefined,
       signal
     });
@@ -641,7 +646,7 @@ async function api(path, body, signal){
   }
   let data = null; try{ data = await res.json(); }catch(_){}
   if (!res.ok){
-    if (res.status===401){ logout(true); }
+    if (res.status===401 && path!=="auth" && path!=="me" && path!=="logout"){ logout(true); }
     throw {code:(data && data.code) || ("http_"+res.status), message:(data && data.message) || ("Erreur du serveur (" + res.status + ").")};
   }
   return data;
@@ -1177,7 +1182,7 @@ async function askStream(turns, onDelta, signal){
   let res;
   try{
     res = await fetch(API + "?action=claude", { method:"POST", signal,
-      headers:{"X-Antoine-Code": accessCode, "Content-Type":"application/json"},
+      headers:{"X-Antoine-Csrf": csrfToken, "Content-Type":"application/json"},
       body: JSON.stringify({task:"ask", stream:true, draft:$("aDraft").checked, turns}) });
   }catch(e){
     if (e && e.name==="AbortError") throw {code:"cancelled"};
@@ -1357,7 +1362,7 @@ function openPage(key, keepScroll){
 
 /* ---------- Connexion ---------- */
 function showApp(on){
-  show($("login"), !on); show(document.querySelector("main"), on); show($("navTabs"), on); show($("navAdmin"), on); show($("who"), on);
+  show($("login"), !on); show(document.querySelector("main"), on); show($("navTabs"), on); show($("navAdmin"), on && userRole==="admin"); show($("who"), on);
   if (!on) closePops();
 }
 /* Menu du compte et popover de la base : un seul ouvert à la fois */
@@ -1380,34 +1385,40 @@ document.addEventListener("keydown", (e) => {
   if (opened){ closePops(); $(opened[0]).focus(); }
 });
 function logout(expired){
-  accessCode=""; agencyName=""; authed=false; storeCode("");
+  if (!expired && authed) api("logout", {}).catch(()=>{}); // ferme la session côté serveur
+  csrfToken=""; agencyName=""; userRole=""; authed=false;
   showApp(false);
-  if (expired) showErr("loginError","Votre code d'accès n'est plus valide. Saisissez le nouveau code transmis par Elan Cité.");
+  if (expired) showErr("loginError","Votre session a expiré. Reconnectez-vous.");
   updateButtons();
 }
-async function login(code){
+function enter(r){
+  csrfToken = r.csrf; agencyName = r.user.name; userRole = r.user.role; authed = true;
+  $("whoName").textContent = $("whoName2").textContent = agencyName;
+  $("whoInitial").textContent = (String(agencyName||"").trim().charAt(0) || "?").toUpperCase();
+  showApp(true); updateButtons(); loadKb();
+}
+async function login(id, pwd){
   hideErr("loginError");
-  accessCode = code;
   try{
-    const r = await api("auth", {});
-    agencyName = r.agency; authed = true; storeCode(code);
-    $("whoName").textContent = $("whoName2").textContent = agencyName;
-    $("whoInitial").textContent = (String(agencyName||"").trim().charAt(0) || "?").toUpperCase();
-    showApp(true); updateButtons(); loadKb();
+    const r = await api("auth", {login:id, password:pwd});
+    $("loginPwd").value = "";
+    enter(r);
   }catch(e){
-    accessCode = ""; storeCode("");
     showApp(false);
-    showErr("loginError", e && e.code==="antoine_unauthorized" ? "Code d'accès invalide." : apiMessage(e));
+    showErr("loginError", apiMessage(e));
   }
 }
-$("loginBtn").onclick = () => { const c=$("code").value.trim(); if (c) login(c); };
-$("code").onkeydown = (e) => { if (e.key==="Enter") $("loginBtn").click(); };
+$("loginForm").onsubmit = (e) => {
+  e.preventDefault();
+  const id=$("loginId").value.trim(), pwd=$("loginPwd").value;
+  if (!id || !pwd){ showErr("loginError","Saisissez votre identifiant et votre mot de passe."); return; }
+  login(id, pwd);
+};
 $("logout").onclick = () => logout(false);
 
 /* ---------- Démarrage ---------- */
 updateButtons();
-const saved = readCode();
-if (saved) login(saved); else showApp(false);
+api("me").then(enter).catch(() => showApp(false)); // session déjà ouverte (cookie) ?
 })();
 </script>
 </body>
