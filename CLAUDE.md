@@ -22,6 +22,16 @@ Mise en œuvre : `antoine_ia_unescape` (`lib/notion.php`), appliquée par `antoi
 
 Le format de réponse des trois tâches reste dans le code (`lib/prompts.php`) : celui de Questions (`antoine_ia_ask_format`) alimente l'affichage en pastilles, encarts et relances de l'onglet Questions. Toute modification de ce format doit être reportée dans `parseAnswer` (`lib/app.html`).
 
+## Téléchargement de la relecture (`lib/app.html`, `reviewDocx`)
+
+Pour une relecture à partir d'un fichier .docx, le bouton de téléchargement fournit le document d'origine annoté, créé dans le navigateur (JSZip, chargé depuis jsDelivr comme mammoth) : le fichier n'est pas envoyé au serveur et `docBuf` n'en garde qu'une copie en mémoire. Texte collé : pas de document d'origine, le rapport reste en Markdown (`reviewMarkdown`).
+
+- Un commentaire Word (auteur « Product AI (relecture) ») par remarque, ancré sur la citation ; les commentaires déjà présents dans le fichier sont conservés. La synthèse, les éléments à ajouter, les commentaires non rattachés et les pages de la base utilisées forment une page ajoutée en fin de document (`synthXml`).
+- La citation est cherchée dans `word/document.xml` sans espaces, sans différence de guillemets ni de casse (`locateQuote`) : le texte transmis à Claude vient de mammoth, qui ne restitue pas les sauts de ligne comme le XML. Une citation longue retrouvée seulement par son début ou sa fin ancre le commentaire sur tout le paragraphe. Une citation introuvable (ou absente, ou dans une note de bas de page) va dans la liste « Commentaires non rattachés » de la page de fin.
+- Si la création échoue, le rapport est téléchargé en Markdown avec un message.
+- Toute modification du format de réponse de la relecture (`antoine_ia_review_format`) doit être reportée dans `reviewDocx`, `synthXml` et `reviewMarkdown`.
+- Vérification d'un changement : annoter un vrai .docx (avec tableau, gras en milieu de phrase, commentaire existant), contrôler que chaque commentaire encadre le bon passage, puis ouvrir le fichier dans Word.
+
 ## Dépôt, déploiement et secrets
 
 Le code vit dans le dépôt GitHub privé `thomaselancite/product-ai`. Toute modification passe par une branche et une pull request ; la fusion dans `main` déploie automatiquement sur l'hébergement OVH en SFTP (lftp), comme le dépôt `creation-site-web` (`.github/workflows/deploy.yml`). Le workflow peut aussi être lancé à la main (« Run workflow », simulation par défaut). `check-ovh.yml` teste la connexion et le dossier distant en lecture seule.
