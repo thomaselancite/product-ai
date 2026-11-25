@@ -13,6 +13,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.13.0/mammoth.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <link rel="stylesheet" href="assets/design.css?v=1">
 <style>
 :root{
@@ -726,7 +727,7 @@ function kbText(includeDraft){
 }
 
 /* ---------- Chargement du document ---------- */
-let docHtml = "", docName = "";
+let docHtml = "", docName = "", docBuf = null;
 const drop=$("drop"), fileIn=$("file");
 drop.onclick=()=>fileIn.click();
 drop.onkeydown=(e)=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); fileIn.click(); } };
@@ -743,7 +744,7 @@ async function readDocx(file){
   try{
     const buf = await file.arrayBuffer();
     const out = await mammoth.convertToHtml({arrayBuffer:buf}, {ignoreEmptyParagraphs:true});
-    docHtml = out.value; docName = file.name;
+    docHtml = out.value; docName = file.name; docBuf = buf;
     drop.classList.add("has");
     $("dropTitle").textContent = file.name;
     $("dropSub").textContent = "Fichier prêt. Cliquez pour en choisir un autre.";
@@ -804,7 +805,8 @@ $("runReview").onclick = async () => {
   reviewCtl = new AbortController();
   try{
     const data = (await api("claude", {task:"review", draft:$("rDraft").checked, ctx, doc:docText}, reviewCtl.signal)).data;
-    lastReview = { ctx, data, used:k.used.map(p=>p.name+" ("+p.status+")"), excluded:k.excluded, docText };
+    lastReview = { ctx, data, used:k.used.map(p=>p.name+" ("+p.status+")"), excluded:k.excluded, docText, buf: reviewSrc==="file" ? docBuf : null };
+    $("dlReport").textContent = lastReview.buf ? "Télécharger le document annoté" : "Télécharger le rapport";
     renderReview(data);
     show($("reviewProgress"), false); show($("reviewResults"), true);
   }catch(e){
@@ -929,15 +931,202 @@ function reviewMarkdown(){
 }
 
 /* ---------- Téléchargements ---------- */
-function save(filename, data, errId){
+function save(filename, data, errId, type){
   hideErr(errId);
   try{
-    const url = URL.createObjectURL(new Blob([data], {type:"text/markdown;charset=utf-8"}));
+    const url = URL.createObjectURL(new Blob([data], {type:type||"text/markdown;charset=utf-8"}));
     const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(url), 2000);
   }catch(e){ showErr(errId, "Téléchargement impossible dans ce navigateur."); }
 }
-$("dlReport").onclick=()=>{ const base=(lastReview&&lastReview.ctx.name||"contenu").replace(/\.docx$/i,""); save("relecture-"+base+".md", reviewMarkdown(), "dlError"); };
+/* Relecture d'un fichier : le .docx d'origine annoté. Texte collé (pas de fichier d'origine) : rapport en Markdown. */
+$("dlReport").onclick=async()=>{
+  const r=lastReview, base=(r&&r.ctx.name||"contenu").replace(/\.docx$/i,"");
+  if (r && r.buf){
+    try{ const out=await reviewDocx(r.buf, r); save(base+"-relu.docx", out.file, "dlError", DOCX_MIME); return; }
+    catch(e){ console.error(e); save("relecture-"+base+".md", reviewMarkdown(), "dlError"); showErr("dlError","Le document Word annoté n'a pas pu être créé ("+(e&&e.message||"erreur inconnue")+"). Le rapport a été téléchargé en Markdown à la place."); return; }
+  }
+  save("relecture-"+base+".md", reviewMarkdown(), "dlError");
+};
+
+/* ---------- Document Word annoté ---------- */
+// Réécrit le .docx d'origine : un commentaire Word par remarque, ancré sur le passage cité, et une page
+// de synthèse en fin de document. Tout se passe dans le navigateur : le fichier n'est envoyé nulle part.
+const WNS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const XMLNS = "http://www.w3.org/XML/1998/namespace";
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const DOCX_AUTHOR = "Product AI (relecture)";
+const xClean = s => String(s==null?"":s).replace(/\r/g,"").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g,"");
+const xEsc = s => xClean(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+function wRun(text, o){
+  o = o||{};
+  const rpr = (o.bold||o.italic||o.color||o.size) ? "<w:rPr>"+(o.bold?"<w:b/>":"")+(o.italic?"<w:i/>":"")+(o.color?'<w:color w:val="'+o.color+'"/>':"")+(o.size?'<w:sz w:val="'+o.size+'"/><w:szCs w:val="'+o.size+'"/>':"")+"</w:rPr>" : "";
+  return xEsc(text).split("\n").map(l => "<w:r>"+rpr+'<w:t xml:space="preserve">'+l+"</w:t></w:r>").join("<w:r><w:br/></w:r>");
+}
+// Ordre des éléments de w:pPr imposé par le schéma : keepNext, pageBreakBefore, spacing, ind
+function wPara(runs, o){
+  o = o||{};
+  return "<w:p><w:pPr>"+(o.keep?"<w:keepNext/>":"")+(o.pageBreak?"<w:pageBreakBefore/>":"")+'<w:spacing w:before="'+(o.before||0)+'" w:after="'+(o.after==null?80:o.after)+'"/>'+(o.indent?'<w:ind w:left="'+o.indent+'"'+(o.hang?' w:hanging="'+o.hang+'"':"")+"/>":"")+"</w:pPr>"+runs+"</w:p>";
+}
+
+// Lignes d'un commentaire (aussi utilisées pour la liste des commentaires non rattachés)
+function commentLines(c, approx){
+  const L = [{text:(SEV[c.gravite]||"À vérifier")+" — "+(CAT[c.categorie]||c.categorie||"Autre"), bold:true}];
+  if (approx && c.citation) L.push({text:"Passage cité (retrouvé de façon approchée) : « "+c.citation+" »"});
+  if (c.commentaire) L.push({text:String(c.commentaire)});
+  if (c.proposition) L.push({text:"Proposition : "+c.proposition});
+  if (c.reference) L.push({text:"Base : "+c.reference});
+  return L;
+}
+function commentXml(id, c, approx, date){
+  const paras = commentLines(c, approx).map((l,j)=>"<w:p>"+(j===0?"<w:r><w:annotationRef/></w:r>":"")+wRun(l.text,{bold:l.bold})+"</w:p>").join("");
+  return '<w:comment w:id="'+id+'" w:author="'+xEsc(DOCX_AUTHOR)+'" w:date="'+date+'" w:initials="PAI">'+paras+"</w:comment>";
+}
+
+// Page de synthèse ajoutée en fin de document
+function synthXml(r, unanchored){
+  const d=r.data, s=d.synthese||{}, comments=Array.isArray(d.commentaires)?d.commentaires:[], adds=Array.isArray(d.complements)?d.complements:[], X=[];
+  const H=(t)=>X.push(wPara(wRun(t,{bold:true,size:26,color:"3730A3"}),{keep:true,before:280,after:80}));
+  const P=(t,o)=>X.push(wPara(wRun(t,o),{after:80}));
+  const B=(t)=>X.push(wPara('<w:r><w:t>•</w:t></w:r><w:r><w:tab/></w:r>'+wRun(t),{indent:360,hang:360,after:40}));
+  X.push(wPara(wRun("Relecture Product AI — synthèse",{bold:true,size:36}),{pageBreak:true,after:120}));
+  P("Contenu : "+(r.ctx.name||"texte collé")); P("Produit principal : "+(r.ctx.product||"plusieurs ou non précisé")); P("Marché : "+r.ctx.market);
+  P("Cible : "+r.ctx.target); P("Type de contenu : "+r.ctx.type); P("Relecture du "+new Date().toLocaleDateString("fr-FR"));
+  H("Verdict");
+  P(((VERDICT[s.verdict]||["Verdict non précisé"])[0]),{bold:true});
+  const n=(k)=>comments.filter(c=>(SEV[c.gravite]?c.gravite:"a_verifier")===k).length;
+  P(n("bloquant")+" bloquant(s), "+n("a_corriger")+" à corriger, "+n("a_verifier")+" à vérifier, "+adds.length+" élément(s) à ajouter.");
+  if (s.resume) P(String(s.resume));
+  const list=(t,a)=>{ if(Array.isArray(a)&&a.filter(Boolean).length){ H(t); a.filter(Boolean).forEach(x=>B(String(x))); } };
+  list("Points forts", s.points_forts); list("Points bloquants", s.points_bloquants);
+  H("Éléments à ajouter");
+  if (!adds.length) P("Aucun élément complémentaire proposé.");
+  adds.forEach((a,i)=>{
+    X.push(wPara(wRun((i+1)+". "+(a.element||""),{bold:true}),{keep:true,before:80,after:40}));
+    if (a.pourquoi) X.push(wPara(wRun(String(a.pourquoi)),{indent:360,after:40}));
+    if (a.ou) X.push(wPara(wRun("Emplacement : "+a.ou),{indent:360,after:40}));
+    if (a.reference) X.push(wPara(wRun("Base : "+a.reference),{indent:360,after:40}));
+  });
+  if (unanchored.length){
+    H("Commentaires non rattachés à un passage");
+    P("Ces remarques n'ont pas pu être placées dans la marge : le passage cité n'a pas été retrouvé tel quel dans le document.");
+    unanchored.forEach(([c],j)=>{
+      const L=commentLines(c,false);
+      X.push(wPara(wRun((j+1)+". "+L[0].text,{bold:true}),{keep:true,before:80,after:40}));
+      if (c.citation) X.push(wPara(wRun("« "+c.citation+" »",{italic:true}),{indent:360,after:40}));
+      L.slice(1).forEach(l=>X.push(wPara(wRun(l.text),{indent:360,after:40})));
+    });
+  }
+  H("Pages de la base utilisées");
+  ["Marque & positionnement"].concat(r.used||[]).forEach(x=>B(x));
+  if (r.excluded && r.excluded.length) P("Pages exclues car non validées : "+r.excluded.join(", ")+".");
+  P("Chaque commentaire de la marge est signé « "+DOCX_AUTHOR+" » et renvoie à un passage du document.",{italic:true});
+  return X.join("");
+}
+
+/* Repérage du passage cité dans le XML Word. Comparaison sans espaces ni différences de guillemets/casse :
+   le texte transmis à Claude vient de mammoth, qui ne restitue pas les sauts de ligne et les tabulations comme le XML. */
+function sqOf(s){ return norm(String(s)).replace(/\s/g,""); }
+function locateQuote(paras, quote){
+  const q = sqOf(quote); if (q.length<3) return null;
+  for (const o of paras){ const k=o.sq.indexOf(q); if (k>=0) return {o, a:o.map[k], b:o.map[k+q.length-1]}; }
+  if (q.length>=40) for (const part of [q.slice(0,50), q.slice(-50)]) for (const o of paras){ if (o.sq.indexOf(part)>=0) return {o, a:o.map[0], b:o.map[o.map.length-1], approx:true}; }
+  return null;
+}
+function contentSibling(n, dir){
+  let s = dir<0 ? n.previousSibling : n.nextSibling;
+  while (s && (s.nodeType!==1 || s.localName==="rPr")) s = dir<0 ? s.previousSibling : s.nextSibling;
+  return s;
+}
+// Coupe le run juste avant `node` (enfant du run) ; renvoie le nœud avant lequel insérer un repère
+function runBefore(run, node){
+  if (!contentSibling(node,-1)) return run;
+  const r2 = run.cloneNode(false);
+  const rpr = Array.from(run.childNodes).find(x=>x.nodeType===1 && x.localName==="rPr");
+  if (rpr) r2.appendChild(rpr.cloneNode(true));
+  let n=node; while(n){ const nx=n.nextSibling; r2.appendChild(n); n=nx; }
+  run.parentNode.insertBefore(r2, run.nextSibling);
+  return r2;
+}
+function splitT(t, i){
+  const s=t.textContent, t2=t.cloneNode(false);
+  t.textContent=s.slice(0,i); t2.textContent=s.slice(i);
+  t.setAttributeNS(XMLNS,"xml:space","preserve"); t2.setAttributeNS(XMLNS,"xml:space","preserve");
+  t.parentNode.insertBefore(t2, t.nextSibling);
+  return t2;
+}
+function posBefore(ch){
+  const run=ch.t.parentNode; const node = ch.i>0 ? splitT(ch.t, ch.i) : ch.t;
+  const ref=runBefore(run,node); return [ref.parentNode, ref];
+}
+function posAfter(ch){
+  const t=ch.t, run=t.parentNode;
+  if (ch.i+1 < t.textContent.length){ const ref=runBefore(run, splitT(t, ch.i+1)); return [ref.parentNode, ref]; }
+  const nx=contentSibling(t,1);
+  if (nx){ const ref=runBefore(run,nx); return [ref.parentNode, ref]; }
+  return [run.parentNode, run.nextSibling];
+}
+
+async function reviewDocx(buf, r, outType){
+  if (typeof JSZip==="undefined") throw new Error("la bibliothèque ZIP n'a pas pu se charger");
+  const zip = await JSZip.loadAsync(buf);
+  const parse = (xml)=>{ const d=new DOMParser().parseFromString(xml,"application/xml"); if (d.getElementsByTagName("parsererror").length) throw new Error("XML illisible"); return d; };
+  const ser = (d)=>{ let s=new XMLSerializer().serializeToString(d); if (!/^<\?xml/.test(s)) s='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'+s; return s; };
+  const wx = (target, xml)=>{ const w=parse('<root xmlns:w="'+WNS+'">'+xml+"</root>"); return Array.from(w.documentElement.childNodes).map(n=>target.importNode(n,true)); };
+  const docFile=zip.file("word/document.xml"), relsFile=zip.file("word/_rels/document.xml.rels"), ctFile=zip.file("[Content_Types].xml");
+  if (!docFile || !relsFile || !ctFile) throw new Error("structure du fichier Word inattendue");
+  const doc=parse(await docFile.async("string"));
+  const body=doc.getElementsByTagNameNS(WNS,"body")[0]; if (!body) throw new Error("corps du document introuvable");
+
+  // Paragraphes porteurs de texte (hors repli mc:Fallback), avec la table caractère → nœud w:t
+  const paras=[], owner=new Map();
+  for (const t of Array.from(doc.getElementsByTagNameNS(WNS,"t"))){
+    let n=t.parentNode, p=null, skip=false;
+    while (n && n.nodeType===1){ if (n.localName==="Fallback"){ skip=true; break; } if (n.localName==="p" && n.namespaceURI===WNS){ p=n; break; } n=n.parentNode; }
+    if (skip || !p) continue;
+    let o=owner.get(p); if (!o){ o={p, ts:[], chars:[], sq:"", map:[]}; owner.set(p,o); paras.push(o); }
+    o.ts.push(t);
+  }
+  for (const o of paras) for (const t of o.ts){ const s=t.textContent; for (let i=0;i<s.length;i++){ o.chars.push({t,i}); for (const c of norm(s[i]).replace(/\s/g,"")){ o.sq+=c; o.map.push(o.chars.length-1); } } }
+
+  // Fichier des commentaires : celui du document s'il existe (les commentaires déjà présents sont conservés)
+  let relsXml=await relsFile.async("string"), ctXml=await ctFile.async("string"), cPath="word/comments.xml", hasRel=false;
+  const rm=relsXml.match(/<Relationship\b[^>]*\/relationships\/comments"[^>]*>/);
+  if (rm){ hasRel=true; const tg=(rm[0].match(/Target="([^"]+)"/)||[])[1]; if (tg) cPath = tg[0]==="/" ? tg.slice(1) : "word/"+tg; }
+  const cFile=hasRel ? zip.file(cPath) : null;
+  const cDoc=cFile ? parse(await cFile.async("string")) : parse('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:comments xmlns:w="'+WNS+'"/>');
+  let next=1; for (const c of Array.from(cDoc.getElementsByTagNameNS(WNS,"comment"))){ const v=parseInt(c.getAttributeNS(WNS,"id"),10); if (v>=next) next=v+1; }
+
+  const comments=Array.isArray(r.data.commentaires)?r.data.commentaires:[];
+  const date=new Date().toISOString().replace(/\.\d+Z$/,"Z"), unanchored=[], cx=[], marks=new Map();
+  const addMark=(o,key,xml)=>{ let m=marks.get(o); if(!m){ m=new Map(); marks.set(o,m); } if(!m.has(key)) m.set(key,[]); m.get(key).push(xml); };
+  comments.forEach((c,i)=>{
+    const loc = c.citation ? locateQuote(paras, c.citation) : null;
+    if (!loc){ unanchored.push([c,i]); return; }
+    const id=next++;
+    addMark(loc.o, loc.a, '<w:commentRangeStart w:id="'+id+'"/>');
+    addMark(loc.o, loc.b+0.5, '<w:commentRangeEnd w:id="'+id+'"/><w:r><w:commentReference w:id="'+id+'"/></w:r>');
+    cx.push(commentXml(id,c,loc.approx,date));
+  });
+  // Repères posés de la fin vers le début de chaque paragraphe : les coupures de runs n'invalident pas les positions restantes
+  for (const [o,m] of marks) for (const key of Array.from(m.keys()).sort((x,y)=>y-x)){
+    const [parent,ref]=Number.isInteger(key) ? posBefore(o.chars[key]) : posAfter(o.chars[Math.floor(key)]);
+    for (const n of wx(doc, m.get(key).join(""))) parent.insertBefore(n, ref);
+  }
+
+  // Page de synthèse avant le dernier w:sectPr du corps
+  let sect=null; for (let n=body.lastChild; n; n=n.previousSibling){ if (n.nodeType===1){ if (n.localName==="sectPr") sect=n; break; } }
+  for (const n of wx(doc, synthXml(r, unanchored))) body.insertBefore(n, sect);
+  for (const n of wx(cDoc, cx.join(""))) cDoc.documentElement.appendChild(n);
+
+  zip.file("word/document.xml", ser(doc));
+  zip.file(cPath, ser(cDoc));
+  if (!hasRel) zip.file("word/_rels/document.xml.rels", relsXml.replace("</Relationships>", '<Relationship Id="rIdProductAI1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/></Relationships>'));
+  if (ctXml.indexOf('PartName="/'+cPath+'"')<0) zip.file("[Content_Types].xml", ctXml.replace("</Types>", '<Override PartName="/'+cPath+'" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/></Types>'));
+  const file=await zip.generateAsync({type:outType||"blob", mimeType:DOCX_MIME, compression:"DEFLATE"});
+  return {file, anchored:cx.length, annex:unanchored.length};
+}
+
 
 /* ---------- Brief ---------- */
 let briefCtl=null, lastBrief=null;
